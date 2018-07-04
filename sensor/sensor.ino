@@ -77,40 +77,25 @@ void loop() {
   error = 0;
   // put your main code here, to run repeatedly:
   if (doSimple) {
+    lcd.setCursor(10, 0);
+    lcd.print("STAT:");
     if (sht.readSample()) {
+      lcd.print("OK ");
       sensorTemp = sht.getTemperature();
       sensorRh = sht.getHumidity();
     } else {
       Serial.println(F("E]SHT"));
+      lcd.print("ERR");
       error = error | E_SENSOR;
     }
   }
-
-  if (radio.available() ) {                            // While nothing is received
-    // Grab the response, compare, and send to debugging spew
-    while (radio.available()) {                          // While there is data ready
-      radio.read( &myData, sizeof(myData) );             // Get the payload
-    }
-    if (radioNumber == myData.id) {
-      unsigned long time = micros();
-      lcd.setCursor(9, 1); lcd.print("CONN: "); lcd.print("OK  ");
-      // Spew it
-      Serial.print(F("Got response "));
-      Serial.print(myData._micros);
-      Serial.print(F(", delay "));
-      Serial.print(time - myData._micros);
-      Serial.println(F(" ms"));
-      pongFlg = true;
-      radio.stopListening();
-    }
-  }
-
-  if (!pongFlg && micros() - started_waiting_at > 200000 ) {           // If waited longer than 200ms, indicate timeout and exit while loop
-    lcd.setCursor(9, 1);   lcd.print("CONN: "); lcd.print("FAIL");
-  }
+//
+//  if (!pongFlg && micros() - started_waiting_at > 2000000 ) {           // If waited longer than 200ms, indicate timeout and exit while loop
+//    lcd.setCursor(9, 1);   lcd.print("CONN: "); lcd.print("FAIL");
+//  }
 
   if (doSimple && error == 0) {
-
+    radio.powerUp();
     Serial.print(F("Now sending.."));
     myData.id = radioNumber;
     myData._micros = micros();
@@ -125,19 +110,41 @@ void loop() {
     Serial.print(myData.value_rh);
 
     radio.stopListening();
-    int rt = radio.write( &myData, sizeof(myData));
-    radio.startListening();
-    if (rt) {
-      Serial.print(F("..Sent, "));
+    lcd.setCursor(10, 1); lcd.print("CONN:"); 
+    if (radio.write( &myData, sizeof(myData))) {
+      Serial.println(F("..Done"));
+      lcd.print("OK  ");
+      radio.startListening();
+
     } else {
-      Serial.print(F("failed :"));
-      Serial.println(rt);
+      Serial.println(F("..Fail"));
+      lcd.print("FAIL");
     }
-    started_waiting_at = micros();
-    pongFlg = false;
+    radio.powerDown();
+    //    started_waiting_at = micros();
+    //    pongFlg = false;
   }
 
-  boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
+//  if (radio.available()) {
+//    // Grab the response, compare, and send to debugging spew
+//    while (radio.available()) {                          // While there is data ready
+//      radio.read( &myData, sizeof(myData) );             // Get the payload
+//    }
+//    if (radioNumber == myData.id) {
+//      unsigned long time = micros();
+//      lcd.setCursor(9, 1); lcd.print("CONN: "); lcd.print("OK  ");
+//      // Spew it
+//      Serial.print(F("Got response "));
+//      Serial.print(myData._micros);
+//      Serial.print(F(", delay "));
+//      Serial.print(time - myData._micros);
+//      Serial.println(F(" ms"));
+//      pongFlg = true;
+//      radio.powerDown();
+//    }
+//  }
+
+//  boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
 
   lcd.setCursor(0, 1);
   lcd.print("ID: "); lcd.print(radioNumber);
@@ -150,5 +157,7 @@ void loop() {
   if (doSimple && error == 0) {
     simpleTime = millis();
 
+  }else if (error!=0) {
+    simpleTime = millis()+2000;
   }
 }
