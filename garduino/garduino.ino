@@ -329,8 +329,7 @@ void readCtl() {
         else if ((analogRead(X_PIN) - JS_MID)*JS_ORIENTATION > JS_TRIGGER)  scn++;
         if ((analogRead(Y_PIN) - JS_MID) < -JS_TRIGGER)  frame--;
         else if ((analogRead(Y_PIN) - JS_MID) > JS_TRIGGER) frame++;
-        if (scn < 0) scn = SCN_NUM - 1;
-        scn = scn % SCN_NUM;
+        if (scn >= SCN_NUM) scn = SCN_NUM - 1;
         refreshScn();
         delay(REACT_TIME);
       }
@@ -365,8 +364,8 @@ void ctlSettingScn() {
     else if ((analogRead(X_PIN) - JS_MID)*JS_ORIENTATION > JS_TRIGGER)  x++;
     if ((analogRead(Y_PIN) - JS_MID) < -JS_TRIGGER)  y--;
     else if ((analogRead(Y_PIN) - JS_MID) > JS_TRIGGER)  y++;
-    if (x < 0)x = 0; x = x % LCD_SIZE_X;
-    if (y < 0)y = 0; y = y % LCD_SIZE_Y;
+    if (x >= LCD_SIZE_X) x = LCD_SIZE_X - 1;
+    if (y >= LCD_SIZE_Y) y = LCD_SIZE_Y - 1;
     lcd.setCursor(x, y);
     delay(REACT_TIME);
   }

@@ -5,7 +5,9 @@
 #include <SPI.h>
 #include "RF24.h"
 
-#define SIMPLE_TIME 5000
+#define RADIO_ID 1
+
+#define SIMPLE_TIME 3000
 
 #define I2C_ADDR 0x3F // Define I2C Address for controller
 #define BACKLIGHT 3
@@ -17,7 +19,7 @@ LiquidCrystal_I2C lcd(I2C_ADDR, BACKLIGHT, POSITIVE);
 SHTSensor sht;
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
 RF24 radio(5, 4);
-int radioNumber = 1;
+
 #define RADIO_COUNT 3
 byte addresses[RADIO_COUNT][6] = {"1Node", "2Node", "3Node"};
 
@@ -27,6 +29,8 @@ long simpleTime = millis();
 boolean doSimple = true;
 unsigned long   started_waiting_at  = micros();           // Set up a timeout period, get the current microseconds
 boolean pongFlg = true;
+
+byte lcdCountdown = 0;
 
 struct dataStruct {
   unsigned long _micros;
@@ -40,6 +44,7 @@ byte error = B00000000;
 #define OK B00000000
 #define E_SENSOR B00000001
 #define E_SD B00000010
+int errorCount=0;
 void setup() {
   Serial.begin(9600);
   // put your setup code here, to run once:
@@ -56,13 +61,13 @@ void setup() {
   // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
   radio.setPALevel(RF24_PA_MAX);
   // Open a writing and reading pipe on each radio, with opposite addresses
-  Serial.print("Radio ID: "); Serial.println((const char*)addresses[radioNumber]);
-  radio.openWritingPipe(addresses[radioNumber]);
-  myData.id = radioNumber;
+  Serial.print("Radio ID: "); Serial.println((const char*)addresses[RADIO_ID]);
+  radio.openWritingPipe(addresses[RADIO_ID]);
+  myData.id = RADIO_ID;
   int j = 1;
   Serial.print("Listen ID: ");
   for (int i = 0; i < RADIO_COUNT; i++) {
-    if (i != radioNumber) {
+    if (i != RADIO_ID) {
       Serial.print((const char*)addresses[i]);
       Serial.print(";");
       radio.openReadingPipe(j, addresses[i]);
@@ -71,18 +76,23 @@ void setup() {
   }
   radio.startListening();
   simpleTime = millis();
+  errorCount=0;
 }
+void(* resetFunc) (void) = 0;
+
 void loop() {
   doSimple = ( millis() - simpleTime > SIMPLE_TIME);
   error = 0;
   // put your main code here, to run repeatedly:
   if (doSimple) {
+    Serial.print(F("Simpling..."));
     lcd.setCursor(10, 0);
     lcd.print("STAT:");
     if (sht.readSample()) {
       lcd.print("OK ");
       sensorTemp = sht.getTemperature();
       sensorRh = sht.getHumidity();
+      errorCount=0;
     } else {
       Serial.println(F("E]SHT"));
       lcd.print("ERR");
@@ -97,7 +107,7 @@ void loop() {
   if (doSimple && error == 0) {
     radio.powerUp();
     Serial.print(F("Now sending.."));
-    myData.id = radioNumber;
+    myData.id = RADIO_ID;
     myData._micros = micros();
     myData.value_temp = sensorTemp;
     myData.value_rh = sensorRh;
@@ -130,7 +140,7 @@ void loop() {
 //    while (radio.available()) {                          // While there is data ready
 //      radio.read( &myData, sizeof(myData) );             // Get the payload
 //    }
-//    if (radioNumber == myData.id) {
+//    if (RADIO_ID == myData.id) {
 //      unsigned long time = micros();
 //      lcd.setCursor(9, 1); lcd.print("CONN: "); lcd.print("OK  ");
 //      // Spew it
@@ -147,7 +157,7 @@ void loop() {
 //  boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
 
   lcd.setCursor(0, 1);
-  lcd.print("ID: "); lcd.print(radioNumber);
+  lcd.print("ID: "); lcd.print(RADIO_ID);
   lcd.setCursor(0, 2);
   lcd.print("TEMP: "); lcd.print(sensorTemp);
   lcd.setCursor(0, 3);
@@ -158,6 +168,11 @@ void loop() {
     simpleTime = millis();
 
   }else if (error!=0) {
-    simpleTime = millis()+2000;
+    errorCount++;
+    simpleTime = millis()-3000;
   }
+//  if(errorCount>10){
+//    resetFunc();
+//  }
 }
+

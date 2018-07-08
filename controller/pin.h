@@ -3,8 +3,12 @@
 
 //DHT
 #define DHT_PIN 8 //digital pin
+
 //SD card
-#define SD_CS_Pin 7 //digital pin (clock pin)
+const uint8_t SOFT_MISO_PIN = 40;
+const uint8_t SOFT_MOSI_PIN = 41;
+const uint8_t SOFT_SCK_PIN  = 42;
+const uint8_t SD_CHIP_SELECT_PIN = 43;
 
 //RADIO
 #define R_TRAN_PIN 2
