@@ -25,13 +25,18 @@
 //add water sensor
 //2.6
 //change program selection priority
+//2.8
+//millis overflow logic
 
 //#define MEGA
 #define MH_LCD
 //#define BIG_LCD
 //#define CO2_SENSOR
+//#define COOLER
+//#define PUMP
+
 #define SHT_SENSOR
-#define VERSION "v2.7b"
+#define VERSION "v2.8"
 
 #include <SimpleDHT.h> //self-tailored made DHT22 lib (removed DHT11)
 //#define DEBUG 0
@@ -40,6 +45,7 @@
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h> // F Malpartida's NewLiquidCrystal library
 #include <SD.h>
+#include <avr/wdt.h>
 
 #include "pin.h"
 
@@ -83,18 +89,17 @@
 #define MAX_RUNTIME 300000 //max. time(ms) of program execution
 #define REACT_TIME 750 //reaction time of joystick action
 #define GOAL_COUNT 10  //reading before advance step in program
-#define ENV_PRINT_CYCLE 600 //loop interval to print environment
-#define STS_PRINT_CYCLE 600 //loop interval to print environment
-#define STS_CYCLE 5 //loop interval to gather stat
+#define SUMMARY_PRINT_CYCLE 600 //loop interval to print environment
 #define LIGHT_CYCLE 15 //idle loop to turn off LCD backlight
 #define SAMPLING_CYCLE_TIME 300000
-
+#define SIMPLE_TIME 2000
 
 //System variables
 const PROGMEM char STR_STS[] = "SY|STS|%d|%d|%d|%d|%d|%d|%d|%d";
 const PROGMEM char STR_CONF[] = "M%d|H:%d-%d-%d|T:%d-%d-%d|V:%d,%d|L:%d-%d|W:%d,%d";
 unsigned int loopCount = 0;
-unsigned long inTime;
+unsigned long inTime = 0;
+unsigned long previousMillis = 0;
 static char tmpLog[80];
 byte lcdCountdown = 0;
 File logFile;
@@ -102,6 +107,8 @@ static char logFilename[] = "xxxx.LOG\0";
 byte error = OK;
 boolean skipSd = false;
 unsigned long offset = 0;
+long simpleTime = 0;
+boolean doSimple = true;
 
 //Clock
 DS3231  rtc(SDA, SCL);
@@ -118,7 +125,7 @@ byte light = 0;
 byte pump = 3;
 
 //Sensors
-const byte DHT22_PIN[TENT_SENSORS_NUM  + 1] = {DHT_ENV_PIN, DHT1_PIN}; //plus one env. sensor
+const byte SENSORS_PIN[TENT_SENSORS_NUM  + 1] = {DHT_ENV_PIN, DHT1_PIN}; //plus one env. sensor
 SimpleDHT22 dht22;
 const byte sensor[TENT_SENSORS_NUM] = {1};//plus one env. sensor
 float workingTemp, sensorTemp[TENT_SENSORS_NUM + 1];
@@ -180,13 +187,25 @@ byte lightEnd = 0;
 byte wetInv = 6;
 byte wetDur = 5;
 
+void timeOverflowReset() {
+  tentProgTime = 0;
+  tentLastFanTime = 0;
+  tentLastWetTime = 0;
+  heaterST = 0;
+  lastSurvayTime = 0;
+  simpleTime = 0;
+}
+
 void setup() {
-  inTime = millis();
   // Setup Serial connection
   Serial.begin(9600);
 #ifdef MEGA
   Serial1.begin(9600);
 #endif
+  //watchdog
+  wdt_enable(WDTO_8S);
+  inTime = millis();
+
   // Initialize the rtc object
   rtc.begin();
   curTime = rtc.getTime();
@@ -231,10 +250,21 @@ void setup() {
   if (millis() - inTime < 2000)  delay (2000 - millis() + inTime);
 }
 void loop() {
+  wdt_reset();//I am still alive!!
+
   inTime = millis();
   curTime = rtc.getTime();
+  if (previousMillis > inTime) {
+    timeOverflowReset();
+  }
+  previousMillis = inTime;
+  doSimple = ( inTime - simpleTime > SIMPLE_TIME);
   //================Read DHT Sensors============================//
-  updateSensor();
+  if (doSimple) {
+    updateSensor();
+    simpleTime = inTime;
+  }
+
   //================Serial Ouput=================================//
   //================Process Serial Control======================//
 #ifdef MEGA
@@ -259,7 +289,7 @@ void loop() {
     autoHeater();
     ////vvvvvvvvvvvvvvvv Start Enabled tent logic  vvvvvvvvvvvvvv//
     if (tentProg == PROG::IDLE) {
-      if ((millis() - offset) % (SAMPLING_CYCLE_TIME) > 30000 && (millis() - offset) % (SAMPLING_CYCLE_TIME) < 60000) selectProgram(); // tent is idle
+      if ((inTime - offset) % (SAMPLING_CYCLE_TIME) > 30000 && (inTime - offset) % (SAMPLING_CYCLE_TIME) < 60000) selectProgram(); // tent is idle
     }
     else if (tentStep > 0 || confirmProgram())  executeProgram();
     ////^^^^^^^^^^^^^^^^ End tent logic      ^^^^^^^^^^^^^^^^^^^^//
@@ -267,7 +297,10 @@ void loop() {
   //============Gather statistic=================//
   usageStat();
   //=============Logging=======================//
-  if (loopCount % ENV_PRINT_CYCLE == 0) {
+  if (loopCount % SUMMARY_PRINT_CYCLE == 0) {
+    sprintf_P(tmpLog, STR_STS,
+              ttlOprMin[0], ttlOprMin[1], ttlOprMin[2], ttlOprMin[3],
+              ttlOprMin[4], ttlOprMin[5], ttlOprMin[6], ttlOprMin[7]); addLog(tmpLog);
     printTentEnv(255);
     printTentEnv(0);
   }
@@ -288,6 +321,7 @@ void loop() {
 #endif
   if (millis() - inTime < 1000)  delay (LOOP_TIME - millis() + inTime);
 }
+
 #ifdef MEGA
 void processSerial() {
   if (Serial.available() > 0) {
@@ -467,30 +501,30 @@ void displayRelayStatus() {
   }
 }
 void displayEnv() {
-  frame = frame % sizeof(DHT22_PIN);
+  frame = frame % sizeof(SENSORS_PIN);
   //updateSensor(frame);
   lcd.setCursor(0, 0);
-  lcd.print(frame); lcd.print(F(".T:")); lcd.print(sensorTemp[frame]); lcd.print(F(" *C "));
+  lcd.print(frame); lcd.print(F(".T:")); lcd.print(sensorTemp[frame]); lcd.print(F("*C "));
   lcd.setCursor(0, 1);
-  lcd.print(F("H:")); lcd.print(sensorRh[frame]); lcd.print(F(" RH% "));
+  lcd.print(F("H:")); lcd.print(sensorRh[frame]); lcd.print(F("RH% "));
 }
 void displayTentStat() {
   frame = frame % 2;
   switch (frame) {
     case 0:
       lcd.setCursor(0, 0);
-      lcd.print(F("CFan:"));
+      lcd.print(F("CF:"));
       lcd.print(ttlOprMin[cfan]); lcd.print('m'); lcd.print(ttlOprSec[cfan]); lcd.print('s');
       lcd.setCursor(0, 1);
-      lcd.print(F("VFan:"));
+      lcd.print(F("VF:"));
       lcd.print(ttlOprMin[fan]); lcd.print('m'); lcd.print(ttlOprSec[fan]); lcd.print('s');
       break;
     case 1:
       lcd.setCursor(0, 0);
-      lcd.print(F("Mist:"));
+      lcd.print(F("Mt:"));
       lcd.print(ttlOprMin[mist]); lcd.print('m'); lcd.print(ttlOprSec[mist]); lcd.print('s');
       lcd.setCursor(0, 1);
-      lcd.print(F("Heat:"));
+      lcd.print(F("Ht:"));
       lcd.print(ttlOprMin[heat]); lcd.print('m'); lcd.print(ttlOprSec[heat]); lcd.print('s');
       break;
   }
@@ -517,7 +551,7 @@ void displayTentConf() {
       lcd.print(ventInv); lcd.print(F("m|")); lcd.print(ventDur); lcd.print('m');
       break;
     case 3:
-      lcd.print(F("Light[S|E]"));
+      lcd.print(F("LED[S|E]"));
       lcd.setCursor(0, 1);
       lcd.print(lightStart); lcd.print(SPLIT); lcd.print(lightEnd); ;
       break;
@@ -535,10 +569,11 @@ byte changeValue(byte value) {
   lcd.print(value);
   btnDelay();
   while (digitalRead(SW_PIN) != LOW) {
+    wdt_reset();
     if ((analogRead(Y_PIN) - JS_MID) < -JS_TRIGGER)  value--;
     else if ((analogRead(Y_PIN) - JS_MID) > JS_TRIGGER)  value++;
-    lcd.setCursor(0, 1);
-    lcd.print(value);
+    lcd.setCursor(0, 1); lcd.print("  ");
+    lcd.setCursor(0, 1); lcd.print(value);
     delay(300);
   }
   return value;
@@ -568,8 +603,8 @@ void editTentConf() {
         else if ( x < 8) lightEnd = changeValue(lightEnd);
         break;
       case 4:
-        if (x < 4 ) wetInv = changeValue(&wetInv);
-        else if (x < 8) wetDur = changeValue(&wetDur);
+        if (x < 4 ) wetInv = changeValue(wetInv);
+        else if (x < 8) wetDur = changeValue(wetDur);
         break;
     }
     refreshScn();
@@ -605,14 +640,14 @@ void registerWrite(int whichPin, int whichState) {
 PROG suggestProgram() {
   //Select Program
   // 6. hydration
-  if (millis() - tentLastWetTime > wetInv * 60 * 60000) {
+  if (inTime - tentLastWetTime > wetInv * 60 * 60000) {
     return PROG::WET;
   }
   //5. Regular ventilation
-  else if (millis() - tentLastFanTime > ventInv * 60000) {
+  else if (inTime - tentLastFanTime > ventInv * 60000) {
     if (workingTemp < 0
         || workingTemp > tempLo
-        || millis() - tentLastFanTime < ventInv * 60000 * 1.5) {
+        || inTime - tentLastFanTime < ventInv * 60000 * 1.5) {
       return PROG::VENT;
     }
   }
@@ -677,7 +712,7 @@ void runTempHi() {
   switchHeater(HIGH); //ensure heater is off
   if (tentStep == 0) {
     tentStep++;
-    tentProgTime = millis();
+    tentProgTime = inTime;
     logStepChg();
     goalCount = 0;
     switchFan(LOW);
@@ -688,44 +723,44 @@ void runTempHi() {
     } else if (workingRH > humidLo + 2) {
       switchFan(LOW);
     }
-    switchMister(workingRH > 99.9 ? HIGH : LOW);
+    switchMister(workingRH > 99.9 ? HIGH : LOW); //Prevent dripping, no extra evaperate cooling after satruation
     (workingTemp < 0 || workingTemp <= tempMid) ? goalCount++ : goalCount = 0;
-    if (goalCount > GOAL_COUNT || millis() - tentProgTime > MAX_RUNTIME) progEnd();
+    if (goalCount > GOAL_COUNT || inTime - tentProgTime > MAX_RUNTIME) progEnd();
   }
 }
 void runHumidHi() {
   //P1. start fan until humidity < humidMid
   if (tentStep == 0) {
     tentStep++;
-    tentProgTime = millis();
+    tentProgTime = inTime;
     logStepChg();
     goalCount = 0;
     switchFan(LOW);
   } else if (tentStep == 1) {
-    ((millis() - tentProgTime) % 60000 < 30000) ? switchFan(LOW) : switchFan(HIGH);
+    ((inTime - tentProgTime) % 60000 < 30000) ? switchFan(LOW) : switchFan(HIGH);
     (workingRH < 0 || workingRH < humidMid) ? goalCount++ : goalCount = 0;
-    if (goalCount > GOAL_COUNT || millis() - tentProgTime > MAX_RUNTIME) progEnd();
+    if (goalCount > GOAL_COUNT || inTime - tentProgTime > MAX_RUNTIME) progEnd();
   }
 }
 void runHumidLo() {
   //P1. start mister until workingRH > humidMid
   if (tentStep == 0) {
     tentStep++;
-    tentProgTime = millis();
+    tentProgTime = inTime;
     logStepChg();
     goalCount = 0;
     switchMister(LOW);
   } else if (tentStep == 1) {
-    ((millis() - tentProgTime) % 60000 < 30000) ?  switchMister(LOW) : switchMister(HIGH);
+    ((inTime - tentProgTime) % 60000 < 30000) ?  switchMister(LOW) : switchMister(HIGH);
     (workingRH < 0 || workingRH > humidMid) ?  goalCount++ : goalCount = 0;
-    if (goalCount > GOAL_COUNT || millis() - tentProgTime > MAX_RUNTIME) progEnd();
+    if (goalCount > GOAL_COUNT || inTime - tentProgTime > MAX_RUNTIME) progEnd();
   }
 }
 void runRegVent() {
   //1. start fan and fogger until defined duration
   if (tentStep == 0) {
     tentStep++;
-    tentProgTime = millis();
+    tentProgTime = inTime;
     logStepChg();
     switchFan(LOW);
   } else if (tentStep == 1) {
@@ -734,8 +769,8 @@ void runRegVent() {
     } else if (workingRH > 0 && workingRH > humidHi) {
       switchMister(HIGH);
     }
-    if (millis() - tentProgTime > ventDur * 60000) {
-      tentLastFanTime = millis();
+    if (inTime - tentProgTime > ventDur * 60000) {
+      tentLastFanTime = inTime;
       progEnd();
     }
   }
@@ -743,29 +778,29 @@ void runRegVent() {
 void runHydration() {
   if (tentStep == 0) {
     tentStep++;
-    tentProgTime = millis();
+    tentProgTime = inTime;
     logStepChg();
     switchMister(LOW);
   } else if (tentStep == 1) {
-    if (millis() - tentProgTime > wetDur * 60000) {
+    if (inTime - tentProgTime > wetDur * 60000) {
       tentStep++;
       logStepChg();
       switchMister(HIGH);
     }
   } else if (tentStep == 2) {
-    if (millis() - tentProgTime > (wetDur * 60000) + 60000 * 3) {//give 3 mins for mist to condensate
-      tentLastWetTime = millis();
+    if (inTime - tentProgTime > (wetDur * 60000) + 180000) {//give 3 mins for mist to condensate
+      tentLastWetTime = inTime;
       progEnd();
     }
   }
 }
 
 void logStepChg() {
-  sprintf_P(tmpLog, PSTR("PU|%d|%d|%dm"),  tentProg, tentStep, (millis() - tentProgTime) / 60000); addLog(tmpLog);
+  sprintf_P(tmpLog, PSTR("PU|%d|%d|%dm"),  tentProg, tentStep, (inTime - tentProgTime) / 60000); addLog(tmpLog);
   printTentEnv(0);
 }
 void progEnd() {
-  sprintf_P(tmpLog, PSTR("PF|%d|%dm"),  tentProg, (millis() - tentProgTime) / 60000); addLog(tmpLog);
+  sprintf_P(tmpLog, PSTR("PF|%d|%dm"),  tentProg, (inTime - tentProgTime) / 60000); addLog(tmpLog);
   printTentEnv(0);
   switchMister(HIGH);
   switchFan(HIGH);
@@ -778,7 +813,7 @@ void progEnd() {
   tentStep = 0;
   tentProgTime = 0;
   goalCount = 0;
-  offset = millis() % SAMPLING_CYCLE_TIME;
+  offset = inTime % SAMPLING_CYCLE_TIME;
 }
 //===================================Lighting=====================================//
 void autoLighting() {
@@ -802,7 +837,7 @@ void autoLighting() {
 }
 void autoCfan() {
   if (tentProg == PROG::IDLE) {
-    ((millis() - offset) % SAMPLING_CYCLE_TIME < 60000) ? switchCfan(LOW) : switchCfan(HIGH); //sampling cycle with offset from endProg
+    ((inTime - offset) % SAMPLING_CYCLE_TIME < 60000) ? switchCfan(LOW) : switchCfan(HIGH); //sampling cycle with offset from endProg
   } else {
     (tentMode == 0) ? switchCfan(HIGH) : switchCfan(LOW);
   }
@@ -813,7 +848,7 @@ void autoHeater() {
     return;
   } else if (workingTemp < tempLo) {
     if (heaterST == 0) { //Was off
-      heaterST = millis();
+      heaterST = inTime;
       sprintf_P(tmpLog, PSTR("HO")); addLog(tmpLog);
     }
   } else if (workingTemp >= tempMid) {
@@ -823,13 +858,13 @@ void autoHeater() {
     heaterST = 0;
   }
   if (heaterST > 0) {
-    if (heaterST > millis()) { // Start time in future (resting)
+    if (heaterST > inTime) { // Start time in future (resting)
       switchHeater(HIGH);
-    } else if (millis() - heaterST < 15 * 60000) { //In range operation time (15mins)
+    } else if (inTime - heaterST < 15 * 60000) { //In range operation time (15mins)
       switchHeater(LOW);
     } else { //force to heater to rest for 3mins
       switchHeater(HIGH);
-      heaterST = millis() + (3 * 60000);
+      heaterST = inTime + (3 * 60000);
       sprintf_P(tmpLog, PSTR("HRT")); addLog(tmpLog);
     }
   } else {
@@ -839,14 +874,18 @@ void autoHeater() {
 
 //========================================SD Logger============================================//
 void initSd() {
+#ifdef DEBUG
   Serial.print(F("Init SD.."));
+#endif
   // see if the card is present and can be initialized:
   if (!SD.begin(CS_Pin)) {
     Serial.println(F("XX"));
     // don't do anything more:
     return;
   }
+#ifdef DEBUG
   Serial.println(F("OK"));
+#endif
 }
 void readLog() {
   File inFile = SD.open(logFilename);
@@ -868,7 +907,7 @@ byte loadConf(byte inMode) {
 #endif
   File confFile = SD.open(CONF_FILE, FILE_READ);
   if (confFile) {
-    sprintf_P(tmpLog, PSTR("SY|CONF|%s"), CONF_FILE); addLog(tmpLog);
+    sprintf_P(tmpLog, PSTR("SY|CF|%s"), CONF_FILE); addLog(tmpLog);
     String content;
     // read from the file until there's nothing else in it:
     char tmp; byte mode;
@@ -915,7 +954,8 @@ byte loadConf(byte inMode) {
 
 //=================================Misc.============================================//
 void addLog(char *msg) {
-  Serial.print(rtc.getTimeStr()); Serial.print(SPLIT); Serial.println(msg);
+  //Serial.print(rtc.getTimeStr()); Serial.print(SPLIT);
+  Serial.println(msg);
   if (curTime.mon < 10)
     logFilename[0] = 48;
   else
@@ -966,29 +1006,25 @@ void switchLight(boolean newState) {
 void switchHeater(boolean newState) {
   registerWrite(heat, newState);
 }
-#ifdef MEGA
+#ifdef COOLER
 void switchCooler(boolean newState) {
   registerWrite(cooler, newState);
 }
+#endif
+#ifdef PUMP
 void switchPump(boolean newState) {
   registerWrite(pump, newState);
 }
 #endif
 void usageStat() {
-  if (loopCount % STS_CYCLE == 0) {
-    long curTime = millis();
-    int timePassed = (curTime - lastSurvayTime) / 1000;
-    lastSurvayTime = curTime;
+  if (inTime - lastSurvayTime>10000) {
+    int timePassed = (inTime - lastSurvayTime) / 1000;
     for (int i = 0; i < REG_SIZE; i++) {
       if (bitRead(relayStatus, i) == LOW) ttlOprSec[i] += timePassed;
       ttlOprMin[i] += ttlOprSec[i] / 60;
       ttlOprSec[i] = ttlOprSec[i] % 60;
     }
-  }
-  if (loopCount % STS_PRINT_CYCLE == 0) { //dump to log every ~10mins (est. by cycles)
-    sprintf_P(tmpLog, STR_STS,
-              ttlOprMin[0], ttlOprMin[1], ttlOprMin[2], ttlOprMin[3],
-              ttlOprMin[4], ttlOprMin[5], ttlOprMin[6], ttlOprMin[7]); addLog(tmpLog);
+    lastSurvayTime = inTime;
   }
 }
 
@@ -1028,31 +1064,31 @@ void loadTentEnv() {
 }
 void updateSensor() {
   byte sensor_id = 0;
-  //for (sensor_id; sensor_id < sizeof(DHT22_PIN); sensor_id++) {
+  //for (sensor_id; sensor_id < sizeof(SENSORS_PIN); sensor_id++) {
 #ifdef SHT_SENSOR
-  sensor_id = millis() % (sizeof(DHT22_PIN) - 1); //replace the last sensor
+  sensor_id = inTime % (sizeof(SENSORS_PIN) - 1); //replace the last sensor
 #else
-  sensor_id = millis() % sizeof(DHT22_PIN);
+  sensor_id = inTime % sizeof(SENSORS_PIN);
 #endif
   int err = SimpleDHTErrSuccess;
   int count = 0;
   error = error & ~E_SENSOR;
-  if ((err = dht22.read2(DHT22_PIN[sensor_id], &sensorTemp[sensor_id], &sensorRh[sensor_id], NULL)) != SimpleDHTErrSuccess) {
-    //    count++;
-    //    delay(500);
-    //    if (count > 3) {
-    Serial.print(F("E]DHT")); Serial.print(sensor_id); Serial.print(SPLIT); Serial.println(err);
-    sensorTemp[sensor_id] = sensorRh[sensor_id] = -1;
-    error = error | E_SENSOR;
-    //      break;
-    //    }
+  if ((err = dht22.read2(SENSORS_PIN[sensor_id], &sensorTemp[sensor_id], &sensorRh[sensor_id], NULL)) != SimpleDHTErrSuccess) {
+    count++;
+    //delay(300);
+    while (count > 3) {
+      Serial.print(F("E]DHT")); Serial.print(sensor_id); Serial.print(SPLIT); Serial.println(err);
+      sensorTemp[sensor_id] = sensorRh[sensor_id] = -1;
+      error = error | E_SENSOR;
+      break;
+    }
   }
 #ifdef DEBUG
   Serial.print(F("DHT")); Serial.print(sensor_id); Serial.print(SPLIT); Serial.print(sensorTemp[sensor_id]); Serial.print(SPLIT); Serial.println(sensorRh[sensor_id]);
 #endif
   //}
 #ifdef SHT_SENSOR
-  sensor_id = sizeof(DHT22_PIN) - 1;
+  sensor_id = sizeof(SENSORS_PIN) - 1;
   if (sht.readSample()) {
     sensorTemp[sensor_id] = sht.getTemperature();
     sensorRh[sensor_id] = sht.getHumidity();

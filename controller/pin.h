@@ -13,13 +13,14 @@ const uint8_t SD_CHIP_SELECT_PIN = 43;
 //RADIO
 #define R_TRAN_PIN 2
 #define R_REV_PIN 3
-#define RF_CS_PIN 4
-#define RF_CE_PIN 5
+#define RF_CS_PIN 48
+#define RF_CE_PIN 49
 //Joystick
-#define SW_PIN 6 // digital pin connected to switch output
-#define X_PIN 1 // analog pin connected to X output
-#define Y_PIN 0 // analog pin connected to Y output
-#define JS_ORIENTATION -1 //vertical positioning of joystick
+#define SW_PIN 4
+// digital pin connected to switch output
+#define X_PIN 14 // analog pin connected to X output
+#define Y_PIN 15 // analog pin connected to Y output
+#define JS_ORIENTATION 1 //vertical positioning of joystick
 
 ////CO2
 #ifdef CO2_SENSOR
@@ -36,3 +37,5 @@ const uint8_t SD_CHIP_SELECT_PIN = 43;
 #define GREEN_PIN 12
 #define BLUE_PIN 13
 #endif
+
+
