@@ -10,8 +10,8 @@
 #define CS_Pin 53 //dihgital pin (clock pin)
 //Joystick
 #define SW_PIN 2 // digital pin connected to switch output
-#define X_PIN 1 // analog pin connected to X output
-#define Y_PIN 0 // analog pin connected to Y output
+#define X_PIN A4 // analog pin connected to X output
+#define Y_PIN A3 // analog pin connected to Y output
 #define JS_ORIENTATION -1 //vertical positioning of joystick
 //Register
 #define DATA_PIN 3 //digital pin
@@ -40,8 +40,8 @@
 #define CS_Pin 10 //digital pin (clock pin)
 //Joystick
 #define SW_PIN 2 // digital pin connected to switch output
-#define X_PIN 0 // analog pin connected to X output
-#define Y_PIN 1 // analog pin connected to Y output
+#define X_PIN A3 // analog pin connected to X output
+#define Y_PIN A4 // analog pin connected to Y output
 #define JS_ORIENTATION 1
 //Register
 #define DATA_PIN 3 //digital pin
