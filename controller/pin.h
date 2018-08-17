@@ -1,8 +1,10 @@
 #ifndef PIN_H_INCLUDED
 #define PIN_H_INCLUDED
 
-//DHT
+//Environment Sensor
+#ifndef SHT_SENSOR
 #define DHT_PIN 8 //digital pin
+#endif
 
 //SD card
 const uint8_t SOFT_MISO_PIN = 40;

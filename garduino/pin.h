@@ -7,7 +7,7 @@
 #define DHT_ENV_PIN 6 //digital pin
 #define DHT1_PIN 7 //digital pin
 //SD card
-#define CS_Pin 53 //dihgital pin (clock pin)
+#define SD_CHIP_SELECT_PIN 53 //dihgital pin (clock pin)
 //Joystick
 #define SW_PIN 2 // digital pin connected to switch output
 #define X_PIN A4 // analog pin connected to X output
@@ -37,7 +37,7 @@
 #define DHT_ENV_PIN 6 //digital pin
 #define DHT1_PIN 7 //digital pin
 //SD card
-#define CS_Pin 10 //digital pin (clock pin)
+#define SD_CHIP_SELECT_PIN 10 //digital pin (clock pin)
 //Joystick
 #define SW_PIN 2 // digital pin connected to switch output
 #define X_PIN A3 // analog pin connected to X output

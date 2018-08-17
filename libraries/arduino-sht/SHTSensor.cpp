@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2016, Sensirion AG <andreas.brauchli@sensirion.com>
+ *  Copyright (c) 2018, Sensirion AG <andreas.brauchli@sensirion.com>
  *  Copyright (c) 2015-2016, Johannes Winkelmann <jw@smts.ch>
  *  All rights reserved.
  *
@@ -10,9 +10,9 @@
  *      * Redistributions in binary form must reproduce the above copyright
  *        notice, this list of conditions and the following disclaimer in the
  *        documentation and/or other materials provided with the distribution.
- *      * Neither the name of the <organization> nor the
- *        names of its contributors may be used to endorse or promote products
- *        derived from this software without specific prior written permission.
+ *      * Neither the name of the Sensirion AG nor the names of its
+ *        contributors may be used to endorse or promote products derived
+ *        from this software without specific prior written permission.
  *
  *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -51,13 +51,14 @@ bool SHTSensorDriver::readSample()
 // class SHTI2cSensor
 //
 
-const uint8_t SHTI2cSensor::CMD_SIZE            = 2;
-const uint8_t SHTI2cSensor::EXPECTED_DATA_SIZE  = 6;
+const uint8_t SHTI2cSensor::CMD_SIZE             = 2;
+const uint8_t SHTI2cSensor::EXPECTED_DATA_SIZE   = 6;
 
 bool SHTI2cSensor::readFromI2c(uint8_t i2cAddress,
                                const uint8_t *i2cCommand,
                                uint8_t commandLength, uint8_t *data,
-                               uint8_t dataLength)
+                               uint8_t dataLength,
+                               uint8_t duration)
 {
   Wire.beginTransmission(i2cAddress);
   for (int i = 0; i < commandLength; ++i) {
@@ -69,6 +70,8 @@ bool SHTI2cSensor::readFromI2c(uint8_t i2cAddress,
   if (Wire.endTransmission(false) != 0) {
     return false;
   }
+
+  delay(duration);
 
   Wire.requestFrom(i2cAddress, dataLength);
 
@@ -113,7 +116,7 @@ bool SHTI2cSensor::readSample()
   cmd[1] = mI2cCommand & 0xff;
 
   if (!readFromI2c(mI2cAddress, cmd, CMD_SIZE, data,
-                   EXPECTED_DATA_SIZE)) {
+                   EXPECTED_DATA_SIZE, mDuration)) {
     return false;
   }
 
@@ -137,28 +140,95 @@ bool SHTI2cSensor::readSample()
 
 
 //
+// class SHTC1Sensor
+//
+
+class SHTC1Sensor : public SHTI2cSensor
+{
+public:
+    SHTC1Sensor()
+        // clock stretching disabled, high precision, T first
+        : SHTI2cSensor(0x70, 0x7866, 15, -45, 175, 65535, 100, 65535)
+    {
+    }
+};
+
+
+//
 // class SHT3xSensor
 //
 
 class SHT3xSensor : public SHTI2cSensor
 {
 private:
-  static const uint16_t SHT3X_ACCURACY_HIGH    = 0x2c06;
+  static const uint16_t SHT3X_ACCURACY_HIGH    = 0x2400;
+  static const uint16_t SHT3X_ACCURACY_MEDIUM  = 0x240b;
+  static const uint16_t SHT3X_ACCURACY_LOW     = 0x2416;
+
+  static const uint8_t SHT3X_ACCURACY_HIGH_DURATION   = 15;
+  static const uint8_t SHT3X_ACCURACY_MEDIUM_DURATION = 6;
+  static const uint8_t SHT3X_ACCURACY_LOW_DURATION    = 4;
 
 public:
   static const uint8_t SHT3X_I2C_ADDRESS_44 = 0x44;
+  static const uint8_t SHT3X_I2C_ADDRESS_45 = 0x45;
 
   SHT3xSensor(uint8_t i2cAddress = SHT3X_I2C_ADDRESS_44)
       : SHTI2cSensor(i2cAddress, SHT3X_ACCURACY_HIGH,
+                     SHT3X_ACCURACY_HIGH_DURATION,
                      -45, 175, 65535, 100, 65535)
   {
   }
 
+  virtual bool setAccuracy(SHTSensor::SHTAccuracy newAccuracy)
+  {
+    switch (newAccuracy) {
+      case SHTSensor::SHT_ACCURACY_HIGH:
+        mI2cCommand = SHT3X_ACCURACY_HIGH;
+        mDuration = SHT3X_ACCURACY_HIGH_DURATION;
+        break;
+      case SHTSensor::SHT_ACCURACY_MEDIUM:
+        mI2cCommand = SHT3X_ACCURACY_MEDIUM;
+        mDuration = SHT3X_ACCURACY_MEDIUM_DURATION;
+        break;
+      case SHTSensor::SHT_ACCURACY_LOW:
+        mI2cCommand = SHT3X_ACCURACY_LOW;
+        mDuration = SHT3X_ACCURACY_LOW_DURATION;
+        break;
+      default:
+        return false;
+    }
+    return true;
+  }
 };
+
+
+//
+// class SHT3xAnalogSensor
+//
+
+float SHT3xAnalogSensor::readHumidity()
+{
+  float max_adc = (float)((1 << mReadResolutionBits) - 1);
+  return -12.5f + 125 * (analogRead(mHumidityAdcPin) / max_adc);
+}
+
+float SHT3xAnalogSensor::readTemperature()
+{
+  float max_adc = (float)((1 << mReadResolutionBits) - 1);
+  return -66.875f + 218.75f * (analogRead(mTemperatureAdcPin) / max_adc);
+}
+
 
 //
 // class SHTSensor
 //
+
+const SHTSensor::SHTSensorType SHTSensor::AUTO_DETECT_SENSORS[] = {
+  SHT3X,
+  SHT3X_ALT,
+  SHTC1
+};
 const float SHTSensor::TEMPERATURE_INVALID = NAN;
 const float SHTSensor::HUMIDITY_INVALID = NAN;
 
@@ -167,7 +237,40 @@ bool SHTSensor::init()
   if (mSensor != NULL) {
     cleanup();
   }
-  mSensor = new SHT3xSensor();
+
+  switch(mSensorType) {
+    case SHT3X:
+      mSensor = new SHT3xSensor();
+      break;
+
+    case SHT3X_ALT:
+      mSensor = new SHT3xSensor(SHT3xSensor::SHT3X_I2C_ADDRESS_45);
+      break;
+
+    case SHTW1:
+    case SHTW2:
+    case SHTC1:
+      mSensor = new SHTC1Sensor();
+      break;
+
+    case AUTO_DETECT:
+    {
+      bool detected = false;
+      for (unsigned int i = 0;
+           i < sizeof(AUTO_DETECT_SENSORS) / sizeof(AUTO_DETECT_SENSORS[0]);
+           ++i) {
+        mSensorType = AUTO_DETECT_SENSORS[i];
+        if (init() && readSample()) {
+          detected = true;
+          break;
+        }
+      }
+      if (!detected) {
+        cleanup();
+      }
+      break;
+    }
+  }
   return (mSensor != NULL);
 }
 
@@ -178,6 +281,13 @@ bool SHTSensor::readSample()
   mTemperature = mSensor->mTemperature;
   mHumidity = mSensor->mHumidity;
   return true;
+}
+
+bool SHTSensor::setAccuracy(SHTAccuracy newAccuracy)
+{
+  if (!mSensor)
+    return false;
+  return mSensor->setAccuracy(newAccuracy);
 }
 
 void SHTSensor::cleanup()

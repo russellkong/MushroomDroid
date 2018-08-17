@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2016, Sensirion AG <andreas.brauchli@sensirion.com>
+ *  Copyright (c) 2018, Sensirion AG <andreas.brauchli@sensirion.com>
  *  Copyright (c) 2015-2016, Johannes Winkelmann <jw@smts.ch>
  *  All rights reserved.
  *
@@ -10,9 +10,9 @@
  *      * Redistributions in binary form must reproduce the above copyright
  *        notice, this list of conditions and the following disclaimer in the
  *        documentation and/or other materials provided with the distribution.
- *      * Neither the name of the <organization> nor the
- *        names of its contributors may be used to endorse or promote products
- *        derived from this software without specific prior written permission.
+ *      * Neither the name of the Sensirion AG nor the names of its
+ *        contributors may be used to endorse or promote products derived
+ *        from this software without specific prior written permission.
  *
  *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -47,9 +47,16 @@ public:
    * probed. The first matching sensor will then be used.
    */
   enum SHTSensorType {
+    /** Automatically detect the sensor type (only i2c sensors listed above) */
+    AUTO_DETECT,
     // i2c Sensors:
     /** SHT3x-DIS with ADDR (sensor pin 2) connected to VSS (default) */
-    SHT3X
+    SHT3X,
+    /** SHT3x-DIS with ADDR (sensor pin 2) connected to VDD */
+    SHT3X_ALT,
+    SHTC1,
+    SHTW1,
+    SHTW2
   };
 
   /**
@@ -58,20 +65,30 @@ public:
    */
   enum SHTAccuracy {
     /** Highest repeatability at the cost of slower measurement */
-    SHT_ACCURACY_HIGH
+    SHT_ACCURACY_HIGH,
+    /** Balanced repeatability and speed of measurement */
+    SHT_ACCURACY_MEDIUM,
+    /** Fastest measurement but lowest repeatability */
+    SHT_ACCURACY_LOW
   };
 
   /** Value reported by getHumidity() when the sensor is not initialized */
   static const float HUMIDITY_INVALID;
   /** Value reported by getTemperature() when the sensor is not initialized */
   static const float TEMPERATURE_INVALID;
+  /**
+   * Auto-detectable sensor types.
+   * Note that the SHTW1 and SHTW2 share exactly the same driver as the SHTC1
+   * and are thus not listed individually.
+   */
+  static const SHTSensorType AUTO_DETECT_SENSORS[];
 
   /**
    * Instantiate a new SHTSensor
    * By default, the i2c bus is queried for known SHT Sensors. To address
    * a specific sensor, set the `sensorType'.
    */
-  SHTSensor(SHTSensorType sensorType = SHT3X)
+  SHTSensor(SHTSensorType sensorType = AUTO_DETECT)
       : mSensorType(sensorType),
         mSensor(NULL),
         mTemperature(SHTSensor::TEMPERATURE_INVALID),
@@ -114,6 +131,12 @@ public:
     return mTemperature;
   }
 
+  /**
+   * Change the sensor accurancy, if supported by the sensor
+   * Returns true if the accuracy was changed
+   */
+  bool setAccuracy(SHTAccuracy newAccuracy);
+
 private:
   void cleanup();
 
@@ -129,6 +152,14 @@ class SHTSensorDriver
 {
 public:
   virtual ~SHTSensorDriver() = 0;
+
+  /**
+   * Set the sensor accuracy.
+   * Returns false if the sensor does not support changing the accuracy
+   */
+  virtual bool setAccuracy(SHTSensor::SHTAccuracy newAccuracy) {
+    return false;
+  }
 
   /** Returns true if the next sample was read and the values are cached */
   virtual bool readSample();
@@ -171,11 +202,12 @@ public:
    * and the values `x' and `y' to convert the fixed-point humidity value
    * received by the sensor to a floating point value using the formula:
    * humidity = x * (rawHumidity / y)
+   * duration is the duration in milliseconds of one measurement
    */
-  SHTI2cSensor(uint8_t i2cAddress, uint16_t i2cCommand,
+  SHTI2cSensor(uint8_t i2cAddress, uint16_t i2cCommand, uint8_t duration,
                float a, float b, float c,
                float x, float y)
-      : mI2cAddress(i2cAddress), mI2cCommand(i2cCommand),
+      : mI2cAddress(i2cAddress), mI2cCommand(i2cCommand), mDuration(duration),
         mA(a), mB(b), mC(c), mX(x), mY(y)
   {
   }
@@ -188,6 +220,7 @@ public:
 
   uint8_t mI2cAddress;
   uint16_t mI2cCommand;
+  uint8_t mDuration;
   float mA;
   float mB;
   float mC;
@@ -199,7 +232,42 @@ private:
   static bool readFromI2c(uint8_t i2cAddress,
                           const uint8_t *i2cCommand,
                           uint8_t commandLength, uint8_t *data,
-                          uint8_t dataLength);
+                          uint8_t dataLength, uint8_t duration);
+};
+
+class SHT3xAnalogSensor
+{
+public:
+
+  /**
+   * Instantiate a new Sensirion SHT3x Analog sensor driver instance.
+   * The required paramters are `humidityPin` and `temperaturePin`
+   * An optional `readResolutionBits' can be set since the Arduino/Genuino Zero
+   * support 12bit precision analog readings. By default, 10 bit precision is
+   * used.
+   *
+   * Example usage:
+   * SHT3xAnalogSensor sht3xAnalog(HUMIDITY_PIN, TEMPERATURE_PIN);
+   * float humidity = sht.readHumidity();
+   * float temperature = sht.readTemperature();
+   */
+  SHT3xAnalogSensor(uint8_t humidityPin, uint8_t temperaturePin,
+                    uint8_t readResolutionBits = 10)
+      : mHumidityAdcPin(humidityPin), mTemperatureAdcPin(temperaturePin),
+        mReadResolutionBits(readResolutionBits)
+  {
+  }
+
+  virtual ~SHT3xAnalogSensor()
+  {
+  }
+
+  float readHumidity();
+  float readTemperature();
+
+  uint8_t mHumidityAdcPin;
+  uint8_t mTemperatureAdcPin;
+  uint8_t mReadResolutionBits;
 };
 
 #endif /* SHTSENSOR_H */
