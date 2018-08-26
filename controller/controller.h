@@ -1,20 +1,22 @@
+#ifndef controller_h
+#define controller_h
 
 #include <Wire.h>
 #include <DS3231.h> //Clock
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h> // F Malpartida's NewLiquidCrystal library
-#ifdef SHT_SENSOR
 #include "SHTSensor.h"
-#else
-#include <SimpleDHT.h> //self-tailored made DHT22 lib (removed DHT11)
-#endif
 #include <SPI.h>
 #include <SdFat.h> //SD card, softSpi
 #include <RF24.h> //2.4GHz radio
 #include <RCSwitch.h> //433 radio
 
+#include <math.h>
 #include <avr/wdt.h> //watchdog
 #include <common.h>
+
+#include "conf.h"
+#include "pin.h"
 
 //Tent program
 typedef enum  {IDLE = 0, VENT, WET, RH_HIGH, RH_LOW, TEMP_HIGH } PROG;
@@ -22,18 +24,13 @@ typedef enum  {IDLE = 0, VENT, WET, RH_HIGH, RH_LOW, TEMP_HIGH } PROG;
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
 RF24 radio(RF_CE_PIN, RF_CS_PIN);
 RCSwitch mySwitch = RCSwitch();
-#ifdef DEBUG
-RCSwitch myReceiver = RCSwitch();
-#endif
+
 //Clock
 DS3231  rtc(SDA, SCL);
 Time curTime;
 LiquidCrystal_I2C lcd(I2C_ADDR, BACKLIGHT, POSITIVE);
-#ifdef SHT_SENSOR
 SHTSensor sht(SHTSensor::SHT3X);
-#else
-SimpleDHT22 dht22;
-#endif
+
 
 const PROGMEM char STR_CHG_MODE[] = "CM|%d";
 const PROGMEM char STR_STS[] = "ST|%d|%d|%d|%d|%d|%d";
@@ -115,6 +112,7 @@ float envRh = 0, workingRh = 0, sensorRh[RADIO_COUNT] = {0, 0, 0};
 int workingCO2 = 0, sensorCO2 = 0;
 long lastRevTime[RADIO_COUNT] = {0, 0, 0};
 
+void printTentEnv(byte env);
 
 void switchMister(boolean newState, boolean force = false) ;
 void switchVFan(boolean newState, boolean force = false) ;
@@ -122,3 +120,5 @@ void switchLight(boolean newState, boolean force = false) ;
 void switchCFan(boolean newState, boolean force = false) ;
 void switchHeater(boolean newState, boolean force = false) ;
 float mollierTemp(float targetRh = 100);
+
+#endif

@@ -1,4 +1,5 @@
-
+#ifndef conf_h
+#define conf_h
 //#define DEBUG
 
 //Equipment List
@@ -7,7 +8,7 @@
 #define MH_LCD
 #define SHT_SENSOR
 
-#define VERSION "v2.91"
+#define VERSION "v2.93"
 
 //System Parameters
 //LCD
@@ -57,3 +58,4 @@
 #define TENT_MODE_OFF 0
 #define TENT_MODE_INCUBATION 1
 #define TENT_MODE_FRUIT 2
+#endif
