@@ -39,5 +39,3 @@ const uint8_t SD_CHIP_SELECT_PIN = 43;
 #define GREEN_PIN 12
 #define BLUE_PIN 13
 #endif
-
-

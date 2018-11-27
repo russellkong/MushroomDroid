@@ -126,9 +126,14 @@ void DS3231::setDOW(uint8_t dow)
 
 char *DS3231::getTimeStr(uint8_t format)
 {
-	static char output[] = "xxxxxxxx";
 	Time t;
 	t=getTime();
+	return getTimeStr(format,t);
+}
+
+char *DS3231::getTimeStr(uint8_t format, Time t)
+{
+	static char output[] = "xxxxxxxx";
 	if (t.hour<10)
 		output[0]=48;
 	else
@@ -157,10 +162,14 @@ char *DS3231::getTimeStr(uint8_t format)
 
 char *DS3231::getDateStr(char divider)
 {
-	static char output[] = "xxxxxxxxxx";
-	int yr, offset;
 	Time t;
 	t=getTime();
+	return getDateStr(divider,t);
+}
+char *DS3231::getDateStr(char divider, Time t)
+{
+	static char output[] = "xxxxxxxxxx";
+	int yr, offset;
 
 	yr=t.year-2000;
 	if (yr<10)
@@ -185,7 +194,6 @@ char *DS3231::getDateStr(char divider)
 	
 	return (char*)&output;
 }
-
 float DS3231::getTemp()
 {
 	uint8_t _msb = _readRegister(REG_TEMPM);

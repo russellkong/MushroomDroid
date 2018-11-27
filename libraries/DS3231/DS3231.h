@@ -82,8 +82,9 @@ class DS3231
 		void	setDOW(uint8_t dow);
 
 		char	*getTimeStr(uint8_t format=FORMAT_LONG);
+		char	*getTimeStr(uint8_t format, Time t);
 		char	*getDateStr(char divider='.');
-
+		char	*getDateStr(char divider, Time t);
 		float	getTemp();
 
 	private:

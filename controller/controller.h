@@ -7,8 +7,12 @@
 #include <LiquidCrystal_I2C.h> // F Malpartida's NewLiquidCrystal library
 #include "SHTSensor.h"
 #include <SPI.h>
+//#ifdef SDCARD
 #include <SdFat.h> //SD card, softSpi
+//#endif
+#ifdef RECEIVER
 #include <RF24.h> //2.4GHz radio
+#endif
 #include <RCSwitch.h> //433 radio
 
 #include <math.h>
@@ -22,14 +26,16 @@
 typedef enum  {IDLE = 0, VENT, WET, RH_HIGH, RH_LOW, TEMP_HIGH } PROG;
 
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
+#ifdef RECEIVER
 RF24 radio(RF_CE_PIN, RF_CS_PIN);
+#endif
 RCSwitch mySwitch = RCSwitch();
 
 //Clock
 DS3231  rtc(SDA, SCL);
 Time curTime;
 LiquidCrystal_I2C lcd(I2C_ADDR, BACKLIGHT, POSITIVE);
-SHTSensor sht(SHTSensor::SHT3X);
+SHTSensor sht;
 
 
 const PROGMEM char STR_CHG_MODE[] = "CM|%d";
@@ -93,24 +99,26 @@ int ttlOprMin[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 int ttlOprSec[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 //Tent parameters (define in conf. file (SD Card))
-uint8_t humidHi = 98; uint8_t humidMid = 90; uint8_t humidLo = 87;
-uint8_t tempHi = 28; uint8_t tempMid = 25; uint8_t tempLo = 15;
-uint8_t ventInv = 15; uint8_t ventDur = 3;
-uint8_t lightStart = 0; uint8_t lightEnd = 0;
-uint8_t wetInv = 6; uint8_t wetDur = 10;
+uint8_t humidHi = 90; uint8_t humidMid = 85; uint8_t humidLo = 83;
+uint8_t tempHi = 25; uint8_t tempMid = 23; uint8_t tempLo = 16;
+uint8_t ventInv = 30; uint8_t ventDur = 5;
+uint8_t lightStart = 7; uint8_t lightEnd = 19;
+uint8_t wetInv = 12; uint8_t wetDur = 30;
 
 //SD card
 /* CATALEX SD CARD READER SOFT-SPI PART */
 // Here are the pins for the soft-spi-bus defined
 // You can select every pin you want, just don't put them on an existing hardware SPI pin.
+#ifdef SDCARD
 SdFatSoftSpi<SOFT_MISO_PIN, SOFT_MOSI_PIN, SOFT_SCK_PIN> sd;
 SdFile inFile, confFile, logFile;
-
+#endif
 //Sensors
 float envTemp = 0, workingTemp = 0, sensorTemp[RADIO_COUNT] = {0, 0, 0};
 float envRh = 0, workingRh = 0, sensorRh[RADIO_COUNT] = {0, 0, 0};
 int workingCO2 = 0, sensorCO2 = 0;
 long lastRevTime[RADIO_COUNT] = {0, 0, 0};
+long lastRevMinTime = 0;
 
 void printTentEnv(byte env);
 
@@ -119,6 +127,6 @@ void switchVFan(boolean newState, boolean force = false) ;
 void switchLight(boolean newState, boolean force = false) ;
 void switchCFan(boolean newState, boolean force = false) ;
 void switchHeater(boolean newState, boolean force = false) ;
-float mollierTemp(float targetRh = 100);
+float mollierTemp(float inTemp, float inRh);
 
 #endif

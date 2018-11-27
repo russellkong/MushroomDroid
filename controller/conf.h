@@ -7,8 +7,9 @@
 //#define HEATER
 #define MH_LCD
 #define SHT_SENSOR
-
-#define VERSION "v2.93"
+#define RECEIVER
+#define SDCARD
+#define VERSION "v2.94"
 
 //System Parameters
 //LCD
@@ -24,16 +25,16 @@
 //Operation constants
 #define LOOP_TIME 1000 //the min. duration of a loop
 #define SPLIT '|'
-#define LCD_OFF_DELAY 15000 //idle loop to turn off LCD backlight
+#define LCD_OFF_DELAY 20000 //idle loop to turn off LCD backlight
 #define REACT_TIME 500 //reaction time of joystick action
 #define MAX_CTL_HOLD_TIME 30000
 #define RADIO_GAP 300
 
-#define MAX_RUNTIME 15*60000 //max. time(ms) of program execution
+#define MAX_RUNTIME 20*60000 //max. time(ms) of program execution
 #define GOAL_COUNT 15  //reading before advance step in program
-#define SAMPLE_INTERVAL 5000 //interval to read local sensor
+#define SAMPLE_INTERVAL 2000 //interval to read local sensor
 #define SUMMARY_INTERVAL 5*60000
-#define RESUBMIT_INTERVAL 60000 //interval to resubmit switch instruction
+#define RESUBMIT_INTERVAL 2*60000 //interval to resubmit switch instruction
 #define DATA_TIMEOUT 90000 //time to expire received data
 //Display variables
 #define SCN_NUM 7
@@ -45,15 +46,16 @@
 #define SCN_ID_CONF 5
 #define SCN_ID_SYS 6
 
-#define CO2_NORMAL 450
-#define CO2_MAX 2500
+#define CO2_NORMAL 430
+#define CO2_MAX 700
 
 #define RADIO_ID 0
 
 //flag for error led
-#define OK B00000000
-#define E_SENSOR B00000001
-#define E_SD B00000010
+#define OK 0
+#define E_SENSOR 1
+#define E_SD 2
+#define E_RF 3
 #define TENT_MODE_COUNT 3
 #define TENT_MODE_OFF 0
 #define TENT_MODE_INCUBATION 1

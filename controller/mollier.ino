@@ -1,14 +1,16 @@
-float getMollierVal(const float inTemp, const float inHumidity)
-{
-  float valRV;//ok1
-  float valPS5;//ok2
-  float valPT = 101325.262; //ok3
-
-
-  valPS5 = 22120000 * (exp(((-7.691234564 * (1 - (273.15 + inTemp) / 647.3) - 26.08023696 * pow((1 - (273.15 + inTemp) / 647.3), 2) - 168.1706546 * pow((1 - (273.15 + inTemp) / 647.3), 3) + 64.23285504 * pow((1 - (273.15 + inTemp) / 647.3), 4) - 118.9646225 * pow((1 - (273.15 + inTemp) / 647.3), 5)) / ((273.15 + inTemp) / 647.3) / (1 + 4.16711732 * (1 - (273.15 + inTemp) / 647.3) + 20.9750676 * pow((1 - (273.15 + inTemp) / 647.3), 2)) - (1 - (273.15 + inTemp) / 647.3) / (1000000000 * pow((1 - (273.15 + inTemp) / 647.3), 2) + 6))));
-
-  valRV = (inHumidity / 100 ) * valPS5;
-
+/** function for approximate wet temperature by mollier chart to specific humidity
+ *  
+**/
+float wetTemp(const float inTemp, const float inHumid, const float outHumid) {
+  float wetbulb = mollierTemp(inTemp, inHumid);
+  float tailTemp = mollierTemp(inTemp, outHumid);
+  return wetbulb + (inTemp - tailTemp);
+}
+/** function to wet blub temperature
+ *  
+ */
+float mollierTemp(const float inTemp, const float inHumidity) {
+  float valRV = (inHumidity / 100 ) * calPSValue(inTemp);
 
   //            CALCULATION OF NB FUNCTION
   float n;
@@ -16,7 +18,7 @@ float getMollierVal(const float inTemp, const float inHumidity)
   float nl = -273.15;
   float pw1;
   float ps ;
-  for (int k = 1; k <= 50; k++)
+  for (int k = 1; k <= 30; k++)
   {
     n = (nh + nl) / 2;
     //alert(n);
@@ -30,22 +32,22 @@ float getMollierVal(const float inTemp, const float inHumidity)
     } else {
       nh = n;
     }
-
   }
   return n;
 }
 
-float calPSValue(const float val)
-{
-  float TS = val;
-  float PS;
-
-  if (TS >= 0)
+float calPSValue(const float val) {
+  float f1 = (1 - (273.15 + val) / 647.3);
+  if (val >= 0)
   {
-    PS = 22120000 * (exp(((-7.691234564 * (1 - (273.15 + TS) / 647.3) - 26.08023696 * pow((1 - (273.15 + TS) / 647.3), 2) - 168.1706546 * pow((1 - (273.15 + TS) / 647.3), 3) + 64.23285504 * pow((1 - (273.15 + TS) / 647.3), 4) - 118.9646225 * pow((1 - (273.15 + TS) / 647.3), 5)) / ((273.15 + TS) / 647.3) / (1 + 4.16711732 * (1 - (273.15 + TS) / 647.3) + 20.9750676 * pow((1 - (273.15 + TS) / 647.3), 2)) - (1 - (273.15 + TS) / 647.3) / (1000000000 * pow((1 - (273.15 + TS) / 647.3), 2) + 6))));
+    return 22120000 * (exp(((-7.691234564 * f1
+                             - 26.08023696 * pow(f1, 2)
+                             - 168.1706546 * pow(f1, 3)
+                             + 64.23285504 * pow(f1, 4)
+                             - 118.9646225 * pow(f1, 5)) /
+                            ((273.15 + val) / 647.3) /
+                            (1 + 4.16711732 * f1 + 20.9750676 * pow(f1, 2)) - f1 / (1000000000 * pow(f1, 2) + 6))));
   } else {
-    PS = 100 * exp(-20.947 * (273.15 / (273.15 + TS) - 1) - 3.56654 * log(273.15 / (273.15 + TS)) + 2.01889 * (1 - (273.15 + TS) / 273.15) + log(6.10714));
+    return 100 * exp(-20.947 * (273.15 / (273.15 + val) - 1) - 3.56654 * log(273.15 / (273.15 + val)) + 2.01889 * (1 - (273.15 + val) / 273.15) + 0.78584);
   }
-  return PS;
 }
-
