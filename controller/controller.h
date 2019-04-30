@@ -99,11 +99,11 @@ int ttlOprMin[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 int ttlOprSec[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 //Tent parameters (define in conf. file (SD Card))
-uint8_t humidHi = 90; uint8_t humidMid = 85; uint8_t humidLo = 83;
-uint8_t tempHi = 25; uint8_t tempMid = 23; uint8_t tempLo = 16;
+uint8_t humidMax = 90; uint8_t humidMid = 85; uint8_t humidMin = 83;
+uint8_t tempMax = 25; uint8_t tempMid = 23; uint8_t tempMin = 16;
 uint8_t ventInv = 30; uint8_t ventDur = 5;
 uint8_t lightStart = 7; uint8_t lightEnd = 19;
-uint8_t wetInv = 12; uint8_t wetDur = 30;
+uint8_t wetHour = 12; uint8_t wetDur = 30;
 
 //SD card
 /* CATALEX SD CARD READER SOFT-SPI PART */

@@ -5,6 +5,8 @@
    2.92 use of sht environment sensor, mollier intake temp adj, CSC SD SPI check(XXX on 2.93)
    2.93 changed mollier constants
    2.94 updated error code and sd error lighting; fixed SD reboot error; updated info lcd page
+   2.95 increase ventilation to suppress infection
+   2.96 reduced hitemp humidity; changed wetting interval to time
 */
 
 #include "conf.h"
@@ -179,8 +181,11 @@ void loop() {
 #endif
     if (tentProg == PROG::IDLE) {
       selectProgram(); // tent is idle
-    } else if (tentStep > 0 || confirmProgram())
+    }
+    if (tentStep > 0 || confirmProgram()
+        || tentProg == PROG::IDLE) {
       executeProgram();
+    }
 
     resubmitSwitch();
   }
@@ -197,7 +202,7 @@ void loop() {
   }
   //=====================Error handling=========//
   digitalWrite(BLUE_PIN, (error == 0) ? HIGH : LOW);
-  digitalWrite(RED_PIN, bitRead(error, E_SENSOR)||(inTime - lastRevMinTime > 180000));
+  digitalWrite(RED_PIN, bitRead(error, E_SENSOR) || (inTime - lastRevMinTime > 180000));
   digitalWrite(GREEN_PIN, bitRead(error, E_SD) || skipSd);
 
   //==================ERROR reboot; when radio lost, reboot the system
@@ -394,14 +399,14 @@ void editTentConf() {
   if (digitalRead(SW_PIN) == LOW && y == 1) {
     switch (frame % 5) {
       case 0:
-        if (x < 3 ) tempHi = changeValue(tempHi);
+        if (x < 3 ) tempMax = changeValue(tempMax);
         else if (x < 6) tempMid = changeValue(tempMid);
-        else if (x < 9) tempLo = changeValue(tempLo);
+        else if (x < 9) tempMin = changeValue(tempMin);
         break;
       case 1:
-        if (x < 3 ) humidHi = changeValue(humidHi);
+        if (x < 3 ) humidMax = changeValue(humidMax);
         else if (x < 6) humidMid = changeValue(humidMid);
-        else if (x < 9) humidLo = changeValue(humidLo);
+        else if (x < 9) humidMin = changeValue(humidMin);
         break;
       case 2:
         if (x < 4 ) ventInv = changeValue(ventInv);
@@ -412,7 +417,7 @@ void editTentConf() {
         else if ( x < 8) lightEnd = changeValue(lightEnd);
         break;
       case 4:
-        if (x < 4 ) wetInv = changeValue(wetInv);
+        if (x < 4 ) wetHour = changeValue(wetHour);
         else if (x < 8) wetDur = changeValue(wetDur);
         break;
     }
@@ -471,7 +476,7 @@ void displayInfo() {
   lcd.setCursor(0, 0); lcd.print(rtc.getDateStr()); lcd.print(F("  ")); lcd.print(rtc.getTimeStr());
   lcd.setCursor(0, 1); lcd.print("I:"); lcd.print(workingTemp); lcd.print(F("C|")); lcd.print(workingRh); lcd.print(F("% "));
   lcd.setCursor(0, 2); lcd.print(F("Mode:   "));
-  lcd.setCursor(6, 2);switch (tentMode) {
+  lcd.setCursor(6, 2); switch (tentMode) {
     case 0:
       lcd.print("X");
       break;
@@ -499,10 +504,10 @@ void displayInfo() {
     case TEMP_HIGH:
       lcd.print("HiTP "); lcd.print(tentStep);
   }
-  
-  lcd.setCursor(0, 3); 
-   lcd.print("M:"); lcd.print(bitRead(switchStatus, mistID));
-   lcd.print("|VF:"); lcd.print(bitRead(switchStatus, vFanID));
+
+  lcd.setCursor(0, 3);
+  lcd.print("M:"); lcd.print(bitRead(switchStatus, mistID));
+  lcd.print("|VF:"); lcd.print(bitRead(switchStatus, vFanID));
   lcd.print("|L:"); lcd.print(bitRead(switchStatus, lightID));
   lcd.print("|CF:"); lcd.print(bitRead(switchStatus, cFanID));
 }
@@ -564,12 +569,12 @@ void displayTentConf() {
     case 0:
       lcd.print(F("Temp[H|M|L]"));
       lcd.setCursor(0, 1);
-      lcd.print(tempHi); lcd.print(SPLIT); lcd.print(tempMid); lcd.print(SPLIT); lcd.print(tempLo);
+      lcd.print(tempMax); lcd.print(SPLIT); lcd.print(tempMid); lcd.print(SPLIT); lcd.print(tempMin);
       break;
     case 1:
       lcd.print(F("RH[H|M|L]"));
       lcd.setCursor(0, 1);
-      lcd.print(humidHi); lcd.print(SPLIT); lcd.print(humidMid); lcd.print(SPLIT); lcd.print(humidLo);
+      lcd.print(humidMax); lcd.print(SPLIT); lcd.print(humidMid); lcd.print(SPLIT); lcd.print(humidMin);
       break;
     case 2:
       lcd.print(F("Vent[I|D]"));
@@ -584,7 +589,7 @@ void displayTentConf() {
     case 4:
       lcd.print(F("Wet[I|D]"));
       lcd.setCursor(0, 1);
-      lcd.print(wetInv); lcd.print(F("h|")); lcd.print(wetDur); lcd.print('m');
+      lcd.print(wetHour); lcd.print(F("h|")); lcd.print(wetDur); lcd.print('m');
       break;
   }
 }
@@ -593,30 +598,30 @@ void displayTentConf() {
 PROG suggestProgram() {
   //Select Program
   // 6. hydration
-  if (inTime - tentLastWetTime > wetInv * 60 * 60000) {
+  if (curTime.hour == wetHour &&  curTime.min < wetDur) {
+    //if (inTime - tentLastWetTime > wetHour * 60 * 60000) {
     return PROG::WET;
   }
   //5. Regular ventilation
-  if ( (workingCO2 > 0 && workingCO2 > CO2_MAX) ||
-       (workingCO2 <= 0 && inTime - tentLastFanTime > ventInv * 60000)) {
-    //    if (workingTemp < 0 //no temp
-    //        || workingTemp > tempLo // normal case
-    //        || inTime - tentLastFanTime < ventInv * 60000 * 1.5 //low temp delay
-    //       ) {
+  if ((inTime - tentLastFanTime > ventInv * 60000
+       && ((envTemp > tempMin && envTemp < tempMax)
+           || (envTemp <= tempMin && workingTemp > tempMin)
+           || (envTemp >= tempMax && workingTemp < tempMax))
+      )
+      || workingCO2 > CO2_MAX) {
     return PROG::VENT;
-    //    }
   }
   if (workingTemp > 0) {
-    if (workingTemp > tempHi) {
+    if (workingTemp > tempMax) {
       //4. High temperature
       return PROG::TEMP_HIGH;
-    } else if (workingRh < humidLo) {
+    } else if (workingRh < humidMin) {
       //1. Low humidity
       return PROG::RH_LOW;
-    } else if (workingRh > humidHi
+    } else if (workingRh > humidMax
                && workingRh > envRh
-               && ((workingTemp >= tempMid && wetTemp(envTemp, envRh, workingRh) + 0.2 < tempHi)
-                   || (workingTemp < tempMid && wetTemp(envTemp, envRh, workingRh) - 0.2 > tempLo)))
+               && ((workingTemp >= tempMid && wetTemp(envTemp, envRh, workingRh) + 0.2 < tempMax)
+                   || (workingTemp < tempMid && wetTemp(envTemp, envRh, workingRh) - 0.2 > tempMin)))
     {
       //2. High humidity
       //C: the mix of intake with internal rh will not push temp upon hi ceiling
@@ -668,8 +673,9 @@ void executeProgram() {
     case PROG::WET: //6. hydration
       runHydration();
       break;
-    default:
-      runOptimize();
+    case PROG::IDLE:
+    default: //case IDLE
+      runIdle();
   }
 }
 void runTempHi() {
@@ -678,18 +684,19 @@ void runTempHi() {
     tentProgTime = inTime;
     logStepChg();
     goalCount = 0;
-    if (workingRh > humidLo) switchVFan(LOW);
-    if (workingRh < 100) switchMister(LOW);
+    //if (workingRh > humidMin)
+    switchVFan(LOW);
+    if (workingRh < 99) switchMister(LOW);
   } else if (tentStep == 1) {
-    if (workingRh < 0 || workingRh < humidLo) {
-      switchVFan(HIGH);
-    } else if (workingRh > humidMid) {
-      switchVFan(LOW);
-    }
+    //    if (workingRh < 0 || workingRh < humidMin) {
+    //      switchVFan(HIGH);
+    //    } else if (workingRh > humidMid) {
+    //      switchVFan(LOW);
+    //    }
     //Prevent dripping, no extra evaperate cooling after satruated
-    if (workingRh >= 100) {
+    if (workingRh >= 99) {
       switchMister(HIGH);
-    } else if (workingRh < 98) {
+    } else if (workingRh < 95) {
       switchMister(LOW);
     }
     (workingTemp < 0 || workingTemp <= tempMid) ? goalCount++ : goalCount = 0;
@@ -708,10 +715,10 @@ void runHumidHi() {
   } else if (tentStep == 1) {
     //((inTime - tentProgTime) % 300000 < 240000) ? switchVFan(LOW) : switchVFan(HIGH); //left time for air mixing
     if (workingRh < 0 || workingRh <= humidMid
-        || wetTemp(envTemp, envRh, workingRh) + 0.1 > tempHi
-        || workingTemp + 0.1 > tempHi
-        || workingTemp - 0.1 < tempLo
-        || wetTemp(envTemp, envRh, workingRh) - 0.1 < tempLo) {
+        || wetTemp(envTemp, envRh, workingRh) + 0.1 > tempMax
+        || workingTemp + 0.1 > tempMax
+        || workingTemp - 0.1 < tempMin
+        || wetTemp(envTemp, envRh, workingRh) - 0.1 < tempMin) {
       goalCount++; //0.1*C gap from execution condition to prevent frequent switching
     } else {
       goalCount = 0;
@@ -744,11 +751,13 @@ void runRegVent() {
   } else if (tentStep == 1) {
     if (workingRh < 0 || workingRh < humidMid) {
       switchMister(LOW);
-    } else if (workingRh > humidHi) {
+    } else if (workingRh > humidMax) {
       switchMister(HIGH);
     }
-    if (inTime - tentProgTime > ventDur * 60000
-        || (workingCO2 > 0 && workingCO2 < CO2_NORMAL)) {
+    if ((inTime - tentProgTime > ventDur * 60000)
+        || ((workingTemp <= tempMin || workingTemp >= tempMax)
+            && workingCO2 > 0 && workingCO2 <= CO2_NORMAL)
+       ) {
       tentLastFanTime = inTime;
       progEnd();
     }
@@ -768,11 +777,22 @@ void runHydration() {
   }
 }
 /** execute on idle status
-    attempt to approach mid value
+    maximize air ventiliation on ideal external air
 */
-void runOptimize() {
-
+void runIdle() {
+  if ((envTemp > tempMin + 1 && envTemp < tempMax - 1 &&
+       envRh > humidMin + 1 && envRh < humidMax - 1)
+      || abs(wetTemp(envTemp, envRh, humidMid) - tempMid) < abs(workingTemp - tempMid)
+     ) {
+    switchVFan(LOW);
+  } else if (!((envTemp > tempMin && envTemp < tempMax &&
+                envRh > humidMin && envRh < humidMax)
+               || abs(wetTemp(envTemp, envRh, humidMid) - tempMid) < abs(workingTemp - tempMid)
+              )) {
+    switchVFan(HIGH);
+  }
 }
+
 void logStepChg() {
   sprintf_P(tmpLog, PSTR("PU|%d|%d|%dm"),  tentProg, tentStep, (inTime - tentProgTime) / 60000); addLog(tmpLog);
   printTentEnv();
@@ -819,7 +839,7 @@ void autoCfan() {
 void autoHeater() {
   if (tentMode == 0 || workingTemp < 0) {
     switchHeater(HIGH);
-  } else if (workingTemp < tempLo) {
+  } else if (workingTemp < tempMin) {
     if (inTime % 300000 < 240000) {
       switchHeater(LOW);
     } else {
@@ -838,7 +858,7 @@ void initSd() {
   // see if the card is present and can be initialized:
   if (!sd.begin(SD_CHIP_SELECT_PIN, SPI_FULL_SPEED)) {
     Serial.println(F("Failed...Skip SD"));
-    bitWrite(error, E_SD,1);
+    bitWrite(error, E_SD, 1);
     skipSd = true;
     // don't do anything more:
     return;
@@ -873,28 +893,28 @@ byte loadConf(byte inMode) {
 #endif
       mode = content.substring(1, 2).toInt();
       if (inMode == mode) {
-        humidLo =  content.substring(2, 4).toInt();
+        humidMin =  content.substring(2, 4).toInt();
         humidMid =  content.substring(4, 6).toInt();
-        humidHi =  content.substring(6, 8).toInt();
-        tempLo =  content.substring(8, 10).toInt();
+        humidMax =  content.substring(6, 8).toInt();
+        tempMin =  content.substring(8, 10).toInt();
         tempMid =  content.substring(10, 12).toInt();
-        tempHi =  content.substring(12, 14).toInt();
+        tempMax =  content.substring(12, 14).toInt();
         ventInv = content.substring(14, 16).toInt();
         ventDur = content.substring(16, 18).toInt();
         lightStart =  content.substring(18, 20).toInt();
         lightEnd =  content.substring(20, 22).toInt();
-        wetInv =  content.substring(22, 24).toInt();
+        wetHour =  content.substring(22, 24).toInt();
         wetDur =  content.substring(24, 26).toInt();
         result = true;
-        sprintf_P(tmpLog, STR_CONF,  mode, humidHi, humidMid, humidLo, tempHi, tempMid, tempLo,
-                  ventInv, ventDur, lightStart, lightEnd, wetInv, wetDur); addLog(tmpLog);
+        sprintf_P(tmpLog, STR_CONF,  mode, humidMax, humidMid, humidMin, tempMax, tempMid, tempMin,
+                  ventInv, ventDur, lightStart, lightEnd, wetHour, wetDur); addLog(tmpLog);
         break;
       }
     }
   } else {
     sd.errorPrint(F("E] Conf file read"));
     result = false;
-    bitWrite(error, E_SD,1);
+    bitWrite(error, E_SD, 1);
   }
   confFile.close();
   return result ? 0 : 1;
@@ -918,7 +938,7 @@ void openLog() {
 
   if (!logFile.open(logFilename, O_WRITE | O_CREAT | O_AT_END) ) {
     sd.errorPrint(F("E] Log file open"));
-    bitWrite(error, E_SD,1);
+    bitWrite(error, E_SD, 1);
   }
 #endif
 }
@@ -927,7 +947,7 @@ void closeLog() {
   if (skipSd) return;
   if (!logFile.sync() || logFile.getWriteError()) {
     sd.errorPrint("E] Log file sync");
-    bitWrite(error, E_SD,1);
+    bitWrite(error, E_SD, 1);
   }
   logFile.close();
 #endif
@@ -946,7 +966,7 @@ void addLog(char *msg) {
        || !logFile.print(SPLIT)
        || !logFile.println(msg)) {
     sd.errorPrint(F("E] Log file write "));
-    bitWrite(error, E_SD,1);
+    bitWrite(error, E_SD, 1);
   }
   msg[0] = '\0';
   //    if (!logFile.sync() || logFile.getWriteError()) {
@@ -1032,7 +1052,7 @@ void resubmitSwitch() {
   if (inTime - resubmitTime > RESUBMIT_INTERVAL) {
     switchMister(bitRead(switchStatus, mistID), true);
     switchVFan(bitRead(switchStatus, vFanID), true);
-    switchLight(bitRead(switchStatus, lightID), true);
+    //switchLight(bitRead(switchStatus, lightID), true);
     resubmitTime = inTime;
   }
 }

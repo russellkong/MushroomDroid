@@ -9,7 +9,7 @@
 #define SHT_SENSOR
 #define RECEIVER
 #define SDCARD
-#define VERSION "v2.94"
+#define VERSION "v2.96"
 
 //System Parameters
 //LCD
@@ -34,7 +34,7 @@
 #define GOAL_COUNT 15  //reading before advance step in program
 #define SAMPLE_INTERVAL 2000 //interval to read local sensor
 #define SUMMARY_INTERVAL 5*60000
-#define RESUBMIT_INTERVAL 2*60000 //interval to resubmit switch instruction
+#define RESUBMIT_INTERVAL 3*60000 //interval to resubmit switch instruction
 #define DATA_TIMEOUT 90000 //time to expire received data
 //Display variables
 #define SCN_NUM 7
@@ -46,7 +46,7 @@
 #define SCN_ID_CONF 5
 #define SCN_ID_SYS 6
 
-#define CO2_NORMAL 430
+#define CO2_NORMAL 400
 #define CO2_MAX 700
 
 #define RADIO_ID 0

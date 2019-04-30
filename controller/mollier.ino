@@ -1,14 +1,15 @@
 /** function for approximate wet temperature by mollier chart to specific humidity
- *  
+
 **/
 float wetTemp(const float inTemp, const float inHumid, const float outHumid) {
+  if (inHumid > outHumid) return inTemp; //no temp drop on dehydration
   float wetbulb = mollierTemp(inTemp, inHumid);
   float tailTemp = mollierTemp(inTemp, outHumid);
   return wetbulb + (inTemp - tailTemp);
 }
 /** function to wet blub temperature
- *  
- */
+
+*/
 float mollierTemp(const float inTemp, const float inHumidity) {
   float valRV = (inHumidity / 100 ) * calPSValue(inTemp);
 

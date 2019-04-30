@@ -6,7 +6,9 @@
 #include <avr/wdt.h> //watchdog
 #include <common.h>
 
-//#define DEBUG
+#define DEBUG
+#define MH_LCD\
+
 //LCD
 #ifdef MH_LCD
 #define I2C_ADDR 0x27 // Define I2C Address for controller
@@ -196,6 +198,6 @@ void loop() {
     delay(2000);
   }
   if (errorCount > 100) {
-    resetFunc();
+    //resetFunc();
   }
 }
