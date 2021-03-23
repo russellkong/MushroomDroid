@@ -1,4 +1,4 @@
-
+#include <Wire.h>
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h> // F Malpartida's NewLiquidCrystal library
 #include "SHTSensor.h"
@@ -38,10 +38,12 @@
 
 //Display variables
 LiquidCrystal_I2C lcd(I2C_ADDR, BACKLIGHT, POSITIVE);
+//SHTSensor sht(SHTSensor::SHT3X_ALT);
 SHTSensor sht;
 RF24 radio(RF_CE_PIN, RF_CS_PIN);
 
 //byte addresses[RADIO_COUNT][6] = {"1Node", "2Node", "3Node"};
+//RfDataObj myData;
 
 float sensorTemp = 0;
 float sensorRh = 0;
@@ -59,7 +61,11 @@ int errorCount = 0;
 void(* resetFunc) (void) = 0;
 
 void setup() {
+  Wire.begin();
   Serial.begin(9600);
+  #ifdef DEBUG
+    Serial.print(F("BOOT"));
+#endif
   // put your setup code here, to run once:
   //watchdog
   wdt_enable(WDTO_8S);
@@ -77,10 +83,15 @@ void setup() {
   radio.begin();
   // Set the PA Level low to prevent power supply related issues since this is a
   // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
-  radio.setPALevel(RF24_PA_MAX);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setChannel(RF_CHANNEL);
+  //radio.setCRCLength( RF24_CRC_16 ) ;
+  radio.setDataRate(RF24_250KBPS);
+  //radio.setPayloadSize(sizeof(myData));
   // Open a writing and reading pipe on each radio, with opposite addresses
   Serial.print("Radio ID: "); Serial.println((const char*)addresses[RADIO_ID]);
   radio.openWritingPipe(addresses[RADIO_ID]);
+  radio.openReadingPipe(1, addresses[CONTROLLER]);
   myData.id = RADIO_ID;
   //  int j = 1;
   //  Serial.print("Listen ID: ");
@@ -93,8 +104,12 @@ void setup() {
   //    }
   //  }
   //  radio.startListening();
+  //radio.stopListening();
   simpleTime = millis();
   errorCount = 0;
+  #ifdef DEBUG
+    Serial.print(F("Done"));
+#endif
 }
 
 void loop() {
@@ -137,18 +152,18 @@ void loop() {
   }
 
   if (doSubmit) {
-    radio.powerUp();
+    //radio.powerUp();
 #ifdef DEBUG
     Serial.print(F("Now sending.."));
 #endif
     myData.id = RADIO_ID;
     myData._micros = micros();
-    myData.type = 1;
+    myData.type = SENSOR_TYPE_TEMP_RH;
     if (error == 0) {
       myData.value1 = sensorTemp;
       myData.value2 = sensorRh;
     } else {
-      myData.value1 =  myData.value2 = -1;
+      myData.value1 =  myData.value2 = 0;
     }
 #ifdef DEBUG
     Serial.print(myData._micros);
@@ -166,7 +181,6 @@ void loop() {
       Serial.println(F("..Done"));
 #endif
       lcd.print("OK  ");
-      radio.startListening();
       submitTime = inTime;
     } else {
 #ifdef DEBUG
@@ -175,7 +189,8 @@ void loop() {
       lcd.print("FAIL");
       error = error | E_SD;
     }
-    radio.powerDown();
+    radio.startListening();
+    //radio.powerDown();
   }
 
   if (error == 0) {
@@ -194,4 +209,3 @@ void loop() {
     resetFunc();
   }
 }
-

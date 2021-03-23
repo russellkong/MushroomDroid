@@ -69,19 +69,19 @@ inline bool isWriteMode(oflag_t oflag) {
 // FatFile class static and const definitions
 // flags for ls()
 /** ls() flag for list all files including hidden. */
-#define LS_A 1
+const uint8_t LS_A = 1;
 /** ls() flag to print modify. date */
-#define LS_DATE 2
+const uint8_t LS_DATE = 2;
 /** ls() flag to print file size. */
-#define LS_SIZE 4
+const uint8_t LS_SIZE = 4;
 /** ls() flag for recursive list of subdirectories */
-#define LS_R 8
+const uint8_t LS_R = 8;
 
 // flags for timestamp
 /** set the file's last access date */
-#define T_ACCESS 1
+const uint8_t T_ACCESS = 1;
 /** set the file's creation date and time */
-#define T_CREATE 2
+const uint8_t T_CREATE = 2;
 /** Set the file's write date and time */
-#define T_WRITE 4
+const uint8_t T_WRITE = 4;
 #endif  // FatApiConstants_h

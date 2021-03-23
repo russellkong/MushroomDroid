@@ -367,7 +367,7 @@ uint8_t SdSpiCard::cardCommand(uint8_t cmd, uint32_t arg) {
   return m_status;
 }
 //------------------------------------------------------------------------------
-uint32_t SdSpiCard::cardCapacity() {
+uint32_t SdSpiCard::cardSize() {
   csd_t csd;
   return readCSD(&csd) ? sdCardCapacity(&csd) : 0;
 }

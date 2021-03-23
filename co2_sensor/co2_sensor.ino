@@ -1,13 +1,16 @@
+#define HVLCD
+
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h> // F Malpartida's NewLiquidCrystal library
+
 #include <MHZ19B_uart.h>
 #include <SPI.h>
 #include "RF24.h"
 #include <avr/wdt.h> //watchdog
 #include <common.h>
 
-#define DEBUG
-#define MH_LCD\
+//#define DEBUG
+#define MH_LCD
 
 //LCD
 #ifdef MH_LCD
@@ -28,7 +31,7 @@
 #define RADIO_ID 2
 
 #define SAMPLE_TIME 5000
-#define SUBMIT_INTERVAL 30000
+#define SUBMIT_INTERVAL 10000
 
 //flag for error led
 #define OK B00000000
@@ -36,8 +39,10 @@
 #define E_SD B00000010
 
 //variable for display
+#ifdef HVLCD
 LiquidCrystal_I2C lcd(I2C_ADDR, BACKLIGHT, POSITIVE);
-RF24 radio(RF_CE_PIN, RF_CS_PIN);
+#endif
+RF24 radio(10, 9);
 MHZ19B_uart mhz19;
 
 int co2Min = 9999;
@@ -70,18 +75,26 @@ void setup() {
   //mhz19.setRange(5000);
   //mhz19.calibrateZero();
   // Serial.println(true);
+#ifdef HVLCD
   lcd.begin (LCD_SIZE_X, LCD_SIZE_Y); // initialize the lcd
   lcd.noBacklight();
   lcd.setCursor(0, 0);
   lcd.print("Warm Up..");
-
+#endif
   radio.begin();
   // Set the PA Level low to prevent power supply related issues since this is a
   // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
-  radio.setPALevel(RF24_PA_MAX);
+  //radio.setPALevel(RF24_PA_MIN);
+  radio.setChannel(RF_CHANNEL);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setDataRate(RF24_250KBPS);
+  //radio.setCRCLength( RF24_CRC_16 ) ;
+  //radio.setPayloadSize(sizeof(myData));
   // Open a writing and reading pipe on each radio, with opposite addresses
   Serial.print("Radio ID: "); Serial.println((const char*)addresses[RADIO_ID]);
+  
   radio.openWritingPipe(addresses[RADIO_ID]);
+  radio.openReadingPipe(1, addresses[CONTROLLER]);
   myData.id = RADIO_ID;
   //int j = 1;
   //Serial.print("Listen ID: ");
@@ -98,7 +111,7 @@ void setup() {
 }
 
 void loop() {
-  
+
   wdt_reset();//I am still alive!!
   unsigned long inTime = millis();
   if (previousMillis > inTime) {
@@ -117,8 +130,10 @@ void loop() {
 #endif
     if (millis() - bootWait < 30000 && (co2ppm < 0 || co2ppm == 410)) {
       co2ppm = mhz19.getPPM();
+#ifdef HVLCD
       lcd.setCursor(0, 1);
       lcd.print((millis() - bootWait) / 1000); lcd.print("s    ");
+#endif
       int runtime = (millis() - inTime);
       if (runtime < 1000) delay(1000 - runtime);
       return;
@@ -127,7 +142,9 @@ void loop() {
       Serial.print("exit warming...");  Serial.print((inTime - bootWait) / 1000); Serial.println('s');
 #endif
       warming = false;
+#ifdef HVLCD
       lcd.clear();
+#endif
       doSample = doSubmit = true;
     }
   }
@@ -137,9 +154,10 @@ void loop() {
 #ifdef DEBUG
     Serial.print("CO2: "); Serial.print(co2ppm); Serial.println("ppm");
 #endif
+#ifdef HVLCD
     lcd.setCursor(0, 0);
     lcd.print("CO2:"); lcd.print(co2ppm); lcd.print("ppm ");
-
+#endif
     if (co2ppm > 0) {
       if (co2Min > co2ppm) {
         co2Min = co2ppm;
@@ -155,17 +173,20 @@ void loop() {
       }
     }
     co2Avg = simpleSum / measure;
+#ifdef HVLCD
     lcd.setCursor(0, 1);
     lcd.print(co2Min); lcd.print('|'); lcd.print(co2Avg); lcd.print('|'); lcd.print(co2Max); lcd.print("       ");
+#endif
   }
 
   if (doSubmit) {
-    radio.powerUp();
+    //radio.powerUp();
     Serial.print(F("Now sending.."));
     myData.id = RADIO_ID;
     myData._micros = micros();
     myData.type = 2;
     myData.value1 = co2ppm;
+    myData.value2 = co2ppm;
 
     Serial.print(myData._micros);
     Serial.print(F(" : "));
@@ -174,18 +195,24 @@ void loop() {
     Serial.print(myData.value1);
 
     radio.stopListening();
+#ifdef HVLCD
     lcd.setCursor(13, 0); lcd.print("C:");
+#endif
     if (radio.write( &myData, sizeof(myData))) {
       Serial.println(F("..Done"));
+#ifdef HVLCD
       lcd.print("Y");
-      radio.startListening();
+#endif
       submitTime = inTime;
     } else {
       Serial.println(F("..Fail"));
+#ifdef HVLCD
       lcd.print("X");
+#endif
       error = error | E_SD;
     }
-    radio.powerDown();
+    radio.startListening();
+    //radio.powerDown();
   }
 
   if (error == 0) {

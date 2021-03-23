@@ -1,15 +1,19 @@
 #ifndef conf_h
 #define conf_h
 //#define DEBUG
+//#define DEBUG_RF
+//#define TEMP_DOWN
 
 //Equipment List
 //#define CFAN
 //#define HEATER
-#define MH_LCD
+//#define MH_LCD
 #define SHT_SENSOR
 #define RECEIVER
-#define SDCARD
-#define VERSION "v2.96"
+#define VERSION "v3.3"
+
+//User Defined Conf
+//#define MIDDAY_LIGHT_OFF
 
 //System Parameters
 //LCD
@@ -25,17 +29,20 @@
 //Operation constants
 #define LOOP_TIME 1000 //the min. duration of a loop
 #define SPLIT '|'
-#define LCD_OFF_DELAY 20000 //idle loop to turn off LCD backlight
-#define REACT_TIME 500 //reaction time of joystick action
+#define LCD_OFF_DELAY 30000 //idle loop to turn off LCD backlight
+#define REACT_TIME 450 //reaction time of joystick action
 #define MAX_CTL_HOLD_TIME 30000
-#define RADIO_GAP 300
+#define RADIO_GAP 500
 
 #define MAX_RUNTIME 20*60000 //max. time(ms) of program execution
 #define GOAL_COUNT 15  //reading before advance step in program
 #define SAMPLE_INTERVAL 2000 //interval to read local sensor
 #define SUMMARY_INTERVAL 5*60000
-#define RESUBMIT_INTERVAL 3*60000 //interval to resubmit switch instruction
-#define DATA_TIMEOUT 90000 //time to expire received data
+#define RESUBMIT_INTERVAL 1*60000 //interval to resubmit switch instruction
+#define DATA_TIMEOUT 2*60000 //time to expire received data
+#define VFAN_REST_TIME 4*60000
+#define VFAN_OP_TIME 5*60000
+#define SWITCH_INTERVAL_MIN 60000
 //Display variables
 #define SCN_NUM 7
 #define SCN_ID_INFO 0
@@ -46,8 +53,8 @@
 #define SCN_ID_CONF 5
 #define SCN_ID_SYS 6
 
-#define CO2_NORMAL 400
-#define CO2_MAX 700
+#define CO2_NORMAL 450
+#define CO2_MAX 800
 
 #define RADIO_ID 0
 

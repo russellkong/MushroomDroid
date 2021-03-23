@@ -129,8 +129,8 @@ fail:
   return false;
 }
 //------------------------------------------------------------------------------
-bool FatFile::createContiguous(FatFile* dirFile, const char* path,
-                               uint32_t size, uint32_t startCluster) {
+bool FatFile::createContiguous(FatFile* dirFile,
+                               const char* path, uint32_t size) {
   uint32_t count;
 
   // don't allow zero length file
@@ -146,7 +146,7 @@ bool FatFile::createContiguous(FatFile* dirFile, const char* path,
   count = ((size - 1) >> (m_vol->clusterSizeShift() + 9)) + 1;
 
   // allocate clusters
-  if (!m_vol->allocContiguous(count, &m_firstCluster, startCluster)) {
+  if (!m_vol->allocContiguous(count, &m_firstCluster)) {
     remove();
     DBG_FAIL_MACRO;
     goto fail;
@@ -563,16 +563,6 @@ bool FatFile::openCachedEntry(FatFile* dirFile, uint16_t dirIndex,
 fail:
   m_attr = FILE_ATTR_CLOSED;
   return false;
-}
-//------------------------------------------------------------------------------
-bool FatFile::openCwd() {
-  if (!cwd()) {
-    DBG_FAIL_MACRO;
-    return false;
-  }
-  *this = *cwd();
-  rewind();
-  return true;
 }
 //------------------------------------------------------------------------------
 bool FatFile::openNext(FatFile* dirFile, oflag_t oflag) {

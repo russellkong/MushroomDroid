@@ -36,8 +36,8 @@
 #include "sdios.h"
 #endif  // INCLUDE_SDIOS
 //------------------------------------------------------------------------------
-/** SdFat version 1.1.0 */
-#define SD_FAT_VERSION 10100
+/** SdFat version */
+#define SD_FAT_VERSION "1.0.15"
 //==============================================================================
 /**
  * \class SdBaseFile

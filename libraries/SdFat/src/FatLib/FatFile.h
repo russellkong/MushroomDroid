@@ -224,27 +224,24 @@ class FatFile {
   /** Create and open a new contiguous file of a specified size.
    *
    * \param[in] dirFile The directory where the file will be created.
-   * \param[in] path A path with a valid file name.
+   * \param[in] path A path with a validfile name.
    * \param[in] size The desired file size.
-   * \param[in] startCluster The desired startCluster.
    *
    * \return The value true is returned for success and
    * the value false, is returned for failure.
    */
-  bool createContiguous(FatFile* dirFile, const char* path,
-                        uint32_t size, uint32_t startCluster = 0);
+  bool createContiguous(FatFile* dirFile,
+                        const char* path, uint32_t size);
   /** Create and open a new contiguous file of a specified size.
    *
-   * \param[in] path A path with a valid file name.
+   * \param[in] path A path with a validfile name.
    * \param[in] size The desired file size.
-   * \param[in] startCluster The desired startCluster.
    *
    * \return The value true is returned for success and
    * the value false, is returned for failure.
    */
-  bool createContiguous(const char* path,
-                        uint32_t size, uint32_t startCluster = 0) {
-    return createContiguous(m_cwd, path, size, startCluster);
+  bool createContiguous(const char* path, uint32_t size) {
+    return createContiguous(m_cwd, path, size);
   }
   /** \return The current cluster number for a file or directory. */
   uint32_t curCluster() const {
@@ -573,11 +570,6 @@ class FatFile {
   bool open(const char* path, oflag_t oflag = O_RDONLY) {
     return open(m_cwd, path, oflag);
   }
-  /** Open current working directory.
-   *
-   * \return true for success or false for failure.
-   */
-  bool openCwd();
   /** Open the next file or subdirectory in a directory.
    *
    * \param[in] dirFile An open FatFile instance for the directory
@@ -753,18 +745,6 @@ class FatFile {
   /** Set the file's current position to zero. */
   void rewind() {
     seekSet(0);
-  }
-  /** Rename a file or subdirectory.
-   *
-   * \note the file will be moved to the current working directory.
-   *
-   * \param[in] newPath New path name for the file/directory.
-   *
-   * \return The value true is returned for success and
-   * the value false is returned for failure.
-   */
-  bool rename(const char* newPath) {
-    return rename(cwd(), newPath);
   }
   /** Rename a file or subdirectory.
    *
