@@ -99,11 +99,11 @@ int ttlOprMin[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 int ttlOprSec[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 //Tent parameters (define in conf. file (SD Card))
-uint8_t humidMax = 90; uint8_t humidMid = 85; uint8_t humidMin = 83;
-uint8_t tempMax = 26; uint8_t tempMid = 23; uint8_t tempMin = 16;
+uint8_t humidMax = 95; uint8_t humidMid = 87; uint8_t humidMin = 85;
+uint8_t tempMax = 28; uint8_t tempMid = 23; uint8_t tempMin = 16;
 uint8_t ventInv = 30; uint8_t ventDur = 10;
 uint8_t lightStart = 7; uint8_t lightEnd = 19;
-uint8_t wetHour = 5; uint8_t wetDur = 90;
+uint8_t wetHour = 5; uint8_t wetDur = 20;
 boolean airCon = false;
 
 //SD card

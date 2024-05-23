@@ -30,7 +30,6 @@ void timeOverflowReset() {
   decisionTime = 0;
   lastUserActionTime = 0;
   resubmitTime = 0;
-  vfanCooldownTime = 0;
   vfanOnSectionTime = 0;
   lastSwitchTimeVFan = 0;
   lastSwitchTimeMist = 0;
@@ -50,27 +49,47 @@ void setup() {
   lcd.begin (LCD_SIZE_X, LCD_SIZE_Y); // initialize the lcd
   lcd.backlight();
   lcd.setCursor(0, 0);
-  lcd.print(F("Controller"));
+  lcd.print(F("Controller "));lcd.print(char(ROOM_ID+65));
   lcd.setCursor(0, 1);
   lcd.print(VERSION);
 
   // Initialize the rtc object
   rtc.begin();
   // The following lines can be uncommented to set the date and time
-//      rtc.setDOW(0);     // Set Day-of-Week to SUNDAY
-//      rtc.setTime(16, 02, 30);     // Set the time to 12:00:00 (24hr format)
-//      rtc.setDate(21, 02, 2021);   // Set the date to January 1st, 2014
+//          rtc.setDOW(3);     // Set Day-of-Week to SUNDAY
+//          rtc.setTime(00, 32, 30);     // Set the time to 12:00:00 (24hr format)
+//          rtc.setDate(22, 5, 2024);   // Set the date to January 1st, 2014
 
   //Joystick
   pinMode(SW_PIN, INPUT_PULLUP);
+  pinMode(X_PIN, INPUT);
+  pinMode(Y_PIN, INPUT);
   //digitalWrite(SW_PIN, HIGH);
+  
+  //Init error led
+  pinMode(RED_PIN, OUTPUT);
+  pinMode(GREEN_PIN, OUTPUT);
+  pinMode(BLUE_PIN, OUTPUT);
+
+  pinMode(A0, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
+  pinMode(A2, INPUT_PULLUP);
+
+  //Flip switch pins - once go LOW, flip the switch
+  pinMode(ML_LIGHT_ON, INPUT_PULLUP);
+  pinMode(ML_MIST_ON,INPUT_PULLUP);
+  pinMode(ML_VFAN_ON,INPUT_PULLUP);
+  pinMode(ML_LIGHT_OFF, INPUT_PULLUP);
+  pinMode(ML_MIST_OFF,INPUT_PULLUP);
+  pinMode(ML_VFAN_OFF,INPUT_PULLUP);
+  
   //INIT SPI modules
   SPI.begin();
 
   //int SD card
   initSd();
-
   lcd.setCursor(0, 2); lcd.print(rtc.getDateStr());
+  Serial.print(F("Get time..."));
   curTime = rtc.getTime();
   openLog();
   sprintf_P(tmpLog, PSTR("SY|Boot|%s"), VERSION); addLog(tmpLog);
@@ -87,16 +106,16 @@ void setup() {
   radio.setDataRate(RF24_250KBPS);
   //radio.setPayloadSize(sizeof(myData));
   // Open a writing and reading pipe on each radio, with opposite addresses
-  Serial.print("Radio ID: "); Serial.println((const char*)addresses[RADIO_ID]);
-  //radio.openWritingPipe(addresses[RADIO_ID]);
+  //Serial.print("Radio ID: "); Serial.println((const char*)addresses[ROOM_ID][RADIO_ID]);
+  //radio.openWritingPipe(addresses[ROOM_ID][RADIO_ID]);
   //myData.id = RADIO_ID;
   int j = 1;
-  Serial.print(F("Listen ID: "));
+  //Serial.print(F("Listen ID: "));
   for (int i = 0; i < RADIO_COUNT; i++) {
     if (i != RADIO_ID) {
-      Serial.print((const char*)addresses[i]);
-      Serial.print(";");
-      radio.openReadingPipe(j, addresses[i]);
+      //Serial.print((const char*)addresses[ROOM_ID][i]);
+      //Serial.print(";");
+      radio.openReadingPipe(j, addresses[ROOM_ID][i]);
       j++;
     }
   }
@@ -114,14 +133,6 @@ void setup() {
   Serial.println(F("Done"));
 #endif
 
-  //Init error led
-  pinMode(RED_PIN, OUTPUT);
-  pinMode(GREEN_PIN, OUTPUT);
-  pinMode(BLUE_PIN, OUTPUT);
-
-  pinMode(A0, INPUT_PULLUP);
-  pinMode(A1, INPUT_PULLUP);
-  pinMode(A2, INPUT_PULLUP);
 
   //All switch set to off
   switchReset();
@@ -133,8 +144,8 @@ void setup() {
   }
   Serial.println("Done");
 
-  jsXRestPoint = analogRead(X_PIN);
-  jsYRestPoint = analogRead(Y_PIN);
+  jsXRestPoint = 512;//analogRead(X_PIN);
+  jsYRestPoint = 512;//analogRead(Y_PIN);
 
   closeLog();
   if (millis() - inTime < 2000)  delay (2000 - millis() + inTime);
@@ -175,6 +186,12 @@ void loop() {
 
   //===============Process JS Action============================//
   readCtl();
+#ifdef DEBUG2
+  Serial.print(F("Cursor:"));
+  Serial.print(analogRead(X_PIN));
+  Serial.print(';');
+  Serial.println(analogRead(Y_PIN));
+#endif
   if (scn_mode == 1) ctlSettingScn();
   refreshScn();
   if (inTime - lastUserActionTime > LCD_OFF_DELAY) {
@@ -182,8 +199,8 @@ void loop() {
     scn_mode = 0; //exit edit mode
   }
   //===============Process tent operation======================//
-  ////vvvvvvvvvvvvvvvv Start Enabled tent logic  vvvvvvvvvvvvvv//
   loadTentEnv();
+  ////vvvvvvvvvvvvvvvv Start Enabled tent logic  vvvvvvvvvvvvvv//
   if (tentMode > 0) {
     autoLighting();
 #ifdef CFAN
@@ -209,6 +226,8 @@ void loop() {
 
     resubmitSwitch();
   }
+  //Read pins to send radio signal
+  switchRadio();
   ////^^^^^^^^^^^^^^^^ End tent logic      ^^^^^^^^^^^^^^^^^^^^//
 
   //============Gather statistic=================//
@@ -223,17 +242,19 @@ void loop() {
   //=====================Error handling=========//
   digitalWrite(BLUE_PIN, (error == 0) ? HIGH : LOW);
   //Red light alert on 3mins no connection|| internal sensor error|| received wrong data(radio crashed)
-  digitalWrite(RED_PIN, bitRead(error, E_SENSOR) || (inTime - lastRevMinTime > 180000) || tentProg == PROG::ERR);
+  digitalWrite(RED_PIN, bitRead(error, E_SENSOR) || (inTime - lastRevMinTime > 5 * 60000) || tentProg == PROG::ERR || !shtSensorHealth);
   //Green light alert on SD error || disabled
   digitalWrite(GREEN_PIN, bitRead(error, E_SD) || skipSd);
 
-  if (tentProg == PROG::ERR) {
+  if (tentProg == PROG::ERR || !shtSensorHealth) {
     errorCnt++;
+  } else {
+    errorCnt == 0;
   }
   //==================ERROR reboot; when radio lost, reboot the system
   boolean reboot = false;
 
-  if (inTime - lastRevMinTime > 3600000 ||  errorCnt > 100) {
+  if (inTime - lastRevMinTime > 30 * 60000 ||  errorCnt > 30 * 60) {
     sprintf_P(tmpLog, PSTR("[Reboot] Radio Timeout")); addLog(tmpLog);
     reboot = true;
   }
@@ -304,7 +325,7 @@ void processSerial() {
 }
 
 boolean isActive() {
-  return inTime - lastUserActionTime < LCD_OFF_DELAY;
+  return inTime - lastUserActionTime < LCD_OFF_DELAY && lastUserActionTime > 0;
 }
 void readCtl() {
 #ifdef DEBUG
@@ -369,16 +390,16 @@ void ctlSettingScn() {
   if (scn == SCN_ID_SW) { //register control
     if (digitalRead(SW_PIN) == LOW && x < 10) {
       if (y == 1) {
-        if (x == 0) {
-          switchMister(!bitRead(switchStatus, mistID));
-        } else if (x == 2) {
-          switchVFan(!bitRead(switchStatus, vFanID));
+        if (x < 2) {
+          switchMister(!bitRead(switchStatus, mistID), true);
+        } else if (x >= 2) {
+          switchVFan(!bitRead(switchStatus, vFanID), true);
         }
       } else if (y == 2) {
-        if (x == 0) {
-          switchLight(!bitRead(switchStatus, lightID));
-        } else if (x == 2) {
-          switchCFan(!bitRead(switchStatus, cFanID));
+        if (x < 2) {
+          switchLight(!bitRead(switchStatus, lightID), true);
+        } else if (x >= 2) {
+          switchCFan(!bitRead(switchStatus, cFanID), true);
         }
       }
       refreshScn();
@@ -529,7 +550,8 @@ void refreshScn() {
 }
 void displayInfo() {
   //lcd.setCursor(0, 0); lcd.print(F("Date:")); lcd.print(rtc.getDateStr());lcd.print(F("Time:"));
-  lcd.setCursor(0, 0); lcd.print(rtc.getDateStr()); lcd.print(F("  ")); lcd.print(rtc.getTimeStr());
+  lcd.setCursor(0, 0); //lcd.print(rtc.getDateStr()); lcd.print(F("  ")); lcd.print(rtc.getTimeStr());
+  lcd.print(F("ROOM ")); lcd.print(char(ROOM_ID+65)); lcd.print(F("    "));lcd.print(rtc.getTimeStr());
   lcd.setCursor(0, 1); //lcd.print(F("I:")); 12.51C|99.9%|10000
   lcd.print(workingTemp); lcd.print(F("C|")); lcd.print(workingRh); lcd.setCursor(11, 1); lcd.print(F("%|")); lcd.print(workingCO2); if (workingCO2 < 10000)lcd.print(F(" ")); if (workingCO2 < 1000)lcd.print(F(" "));
   lcd.setCursor(0, 2); lcd.print(F("Mode:   "));
@@ -675,7 +697,7 @@ void suggestProgram() {
   //with sensor, only ventilate when CO2 over limit
   if (//(workingCO2 <= 0 && inTime - tentLastFanTime > ventInv * 60000)
     inTime - tentLastFanTime > ventInv * 60000
-      || workingCO2 > CO2_MAX) {
+    || workingCO2 > CO2_MAX) {
     suggestion = PROG::VENT;
     return;
   }
@@ -784,7 +806,7 @@ void executeProgram() {
   }
 }
 /* tempHi()
-    Increase ventilation and reduce humidity on temperature is high
+    Increase ventilation and reduce humidity on temperature  high
     reduce contamination and increase evaparation
     enable speckler or water screen when available
 */
@@ -808,26 +830,27 @@ void runTempHi() {
       }
       if (workingRh < humidMin) {
         switchMister(LOW);
-      } else if (workingRh >= humidMid) {
+      } else if (workingRh > humidMid) {
         switchMister(HIGH);
       }
     } else {
       //if (workingRh < humidMin ) switchMister(LOW);
       switchVFan(LOW);
       //switchMister(LOW);
-      if (workingRh < humidMax || envRh < humidMin) {//workingRh < humidMin ||
+      //dry intake air allow evaporation, but too dry will dry out mushroom
+      if ( workingRh < humidMin || envRh < humidMin-10) {//
         switchMister(LOW);
-      } 
-      else if ( workingRh > 99) {//workingRh > humidMax ||
+      }
+      else if (workingRh > humidMid) {//workingRh > humidMax ||
         switchMister(HIGH);
       }
-      //dry intake air allow evaporation, but too dry will dry out mushroom
-      //      if ( envRh < humidMid) {//workingRh < humidMin ||
-      //        switchMister(LOW);
-      //      } else if ( envRh > humidMax) {//workingRh > humidMax ||
-      //        switchMister(HIGH);
-      //      }
     }
+#ifdef DEBUG
+    Serial.print("goalCount=");
+    Serial.print(goalCount);
+    Serial.print("|runTime=");
+    Serial.println(inTime - tentProgTime);
+#endif
     (workingTemp < 0 || workingTemp <= tempMid) ? goalCount++ : goalCount = 0;
     if (goalCount > GOAL_COUNT || inTime - tentProgTime > MAX_RUNTIME) progEnd();
   }
@@ -870,11 +893,11 @@ void runHumidLo() {
     goalCount = 0;
     switchMister(LOW);
   } else if (tentStep == 1) {
-    if (workingCO2 > 0 && workingCO2 > CO2_MAX) {
-      switchVFan(LOW);
-    } else if (workingCO2 < CO2_MAX - 100) {
-      switchVFan(HIGH);
-    }
+//    if (workingCO2 > 0 && workingCO2 > CO2_MAX) {
+//      switchVFan(LOW);
+//    } else if (workingCO2 < CO2_MAX - 100) {
+//      switchVFan(HIGH);
+//    }
     switchMister(LOW);
     //((inTime - tentProgTime) % 4*60000 < 2*60000) ?  switchMister(LOW) : switchMister(HIGH);  //Alt switch for detection
     (workingRh < 0 || workingRh > humidMid) ?  goalCount++ : goalCount = 0;
@@ -901,8 +924,8 @@ void runRegVent() {
       switchMister(HIGH);
     }
     if ((inTime - tentProgTime > ventDur * 60000)
-        || (workingCO2 > 0 && workingCO2 <= CO2_NORMAL)
-            //&& (airCon || envTemp < tempMin || envTemp > tempMax)
+        || (workingCO2 > 0 && workingCO2 <= CO2_NORMAL) ||(workingTemp <tempMin)
+        //&& (airCon || envTemp < tempMin || envTemp > tempMax)
        ) {
       tentLastFanTime = inTime;
       progEnd();
@@ -925,21 +948,21 @@ void runHydration() {
     }
   }
 }
-void runExchange() {
-#ifdef DEBUG
-  Serial.println("[IN] runExchange..");
-#endif
-  if (tentStep == 0) {
-    tentStep++;
-    logStepChg();
-    switchVFan(LOW);
-  } else if (tentStep == 1) {
-    switchVFan(LOW);
-    if (inTime - tentProgTime > 300000) {
-      progEnd();
-    }
-  }
-}
+//void runExchange() {
+//#ifdef DEBUG
+//  Serial.println("[IN] runExchange..");
+//#endif
+//  if (tentStep == 0) {
+//    tentStep++;
+//    logStepChg();
+//    switchVFan(LOW);
+//  } else if (tentStep == 1) {
+//    switchVFan(LOW);
+//    if (inTime - tentProgTime > 300000) {
+//      progEnd();
+//    }
+//  }
+//}
 /** execute on idle status
     maximize air ventiliation on ideal external air
 */
@@ -997,7 +1020,7 @@ void progEnd() {
 
 //===================================Smart equipments=====================================//
 void autoLighting() {
-  if (tentMode == 0 || lightStart == lightEnd) return;
+  if (tentMode == 0 ) return;//|| lightStart == lightEnd
   byte decision = HIGH;
   if (lightStart < lightEnd) {
     if (curTime.hour >= lightStart && curTime.hour < lightEnd
@@ -1042,6 +1065,7 @@ void autoHeater() {
 
 void initSd() {
   Serial.print(F("Init SD.."));
+#ifdef USE_SD
   // see if the card is present and can be initialized:
   if (!sd.begin(SD_CHIP_SELECT_PIN, SPI_FULL_SPEED)) {
     Serial.println(F("Failed...Skip SD"));
@@ -1050,6 +1074,7 @@ void initSd() {
     // don't do anything more:
     return;
   }
+#endif
   Serial.println(F("Done"));
 }
 //format:[TENT_ID(1)][TENT_MODE(1)][HUMID_HI(2)][HUMID_MI(2)][HUMID_LO(2)][TEMP_HI(2)][TEMP_MI(2)][TEMP_LO(2)][VENT_INV_MIN(2)][ventDur_MIN(2)][EOL]
@@ -1058,7 +1083,9 @@ byte loadConf(byte inMode) {
     return 0;
   }
   if (inMode == 0) return 0;
+
   boolean result = false;
+#ifdef USE_SD
 #ifdef DEBUG
   Serial.print(F("Scan conf for:"));  Serial.println(inMode);
 #endif
@@ -1104,13 +1131,15 @@ byte loadConf(byte inMode) {
     bitWrite(error, E_SD, 1);
   }
   confFile.close();
+#endif
   return result ? 0 : 1;
 }
 
 //=================================LOG============================================//
 void openLog() {
+#ifdef USE_SD
 #ifdef DEBUG
-  Serial.println("[IN] openLog..");
+  Serial.print("[IN] openLog..");
 #endif
   if (skipSd) return;
   if (curTime.mon < 10)
@@ -1128,6 +1157,10 @@ void openLog() {
     sd.errorPrint(&Serial, F("E] Log file open"));
     bitWrite(error, E_SD, 1);
   }
+#ifdef DEBUG
+  Serial.println("Done");
+#endif
+#endif
 }
 
 void closeLog() {
@@ -1173,7 +1206,7 @@ void delayRadio() {
   lastRadioSendTime = millis();
 }
 void switchMister(boolean newState, boolean force) {
-  if ((bitRead(switchStatus, mistID) != newState && millis()-lastSwitchTimeMist > SWITCH_INTERVAL_MIN)|| force ) {
+  if ((bitRead(switchStatus, mistID) != newState && millis() - lastSwitchTimeMist > SWITCH_INTERVAL_MIN) || force ) {
     if (!force) {
       lastSwitchTimeMist = millis();
       sprintf_P(tmpLog, PSTR("SW|Mist|%d"), newState);
@@ -1181,7 +1214,7 @@ void switchMister(boolean newState, boolean force) {
     }
     bitWrite(switchStatus, mistID, newState);
     delayRadio();
-    mySwitch.send(mist[newState], 24);
+    mySwitch.send(mist[ROOM_ID][newState], 24);
     //delay(RADIO_GAP);
   }
   //if (newState == LOW) switchCfan(newState);
@@ -1193,31 +1226,44 @@ void switchVFan(boolean newState, boolean force) {
   //    addLog(tmpLog);
   //  }
   //fan operation purse (temp solution to over ventilate)
-  if (tentMode > 0) {
+  if (tentMode > 0 && !force) {
     if (bitRead(switchStatus, vFanID) == 0 || newState == LOW) { //fan already on [
-      if (vfanOnSectionTime == 0) {
-        vfanOnSectionTime = millis();
-      }
-      if (millis() - vfanOnSectionTime > VFAN_OP_TIME) { //ontime over, start cooldown
-        vfanCooldownTime = millis() + VFAN_REST_TIME;
-      }
+#ifdef DEBUG
+      Serial.print("[VFan]On");
+#endif
+//      if (vfanOnSectionTime == 0) {
+//        vfanOnSectionTime = millis();
+//      }
+//      if (millis() > vfanOnSectionTime + VFAN_OP_TIME + VFAN_REST_TIME) { //next start
+//#ifdef DEBUG
+//        Serial.print("[VFan]Resume");
+//#endif
+//        vfanOnSectionTime = millis();
+//      } else if (millis() > vfanOnSectionTime + VFAN_OP_TIME) { //ontime over, start cooldown
+//#ifdef DEBUG
+//        Serial.print("[VFan]CoolDown");
+//#endif
+//        newState = HIGH;
+//      }
     } else {
+#ifdef DEBUG
+      Serial.print("[VFan]Off");
+#endif
       vfanOnSectionTime = 0;
     }
-
-    //force fan off during cooldown
-    if ( vfanCooldownTime > millis()) {
-      newState = HIGH;
-    }
   }
-  if (bitRead(switchStatus, vFanID) != newState && millis()-lastSwitchTimeVFan > SWITCH_INTERVAL_MIN) {
-    lastSwitchTimeVFan = millis();
+#ifdef DEBUG
+  Serial.println(".");
+#endif
+  //&& millis() - lastSwitchTimeVFan > SWITCH_INTERVAL_MIN
+  if ((bitRead(switchStatus, vFanID) != newState ) || force) {
+//    lastSwitchTimeVFan = millis();
     sprintf_P(tmpLog, PSTR("SW|VFan|%d"), newState);
     addLog(tmpLog);
 
     bitWrite(switchStatus, vFanID, newState);
     delayRadio();
-    mySwitch.send(vfan[newState], 24);
+    mySwitch.send(vfan[ROOM_ID][newState], 24);
   }
   //delay(RADIO_GAP);
 
@@ -1230,7 +1276,7 @@ void switchLight(boolean newState, boolean force) {
     }
     bitWrite(switchStatus, lightID, newState);
     delayRadio();
-    mySwitch.send(light[newState], 24);
+    mySwitch.send(light[ROOM_ID][newState], 24);
   }
 }
 void switchCFan(boolean newState, boolean force) {
@@ -1241,7 +1287,7 @@ void switchCFan(boolean newState, boolean force) {
     }
     bitWrite(switchStatus, cFanID, newState);
     delayRadio();
-    mySwitch.send(cfan[newState], 24);
+    mySwitch.send(cfan[ROOM_ID][newState], 24);
   }
 }
 /* with protection logic to prevent long period heating */
@@ -1252,7 +1298,7 @@ void switchHeater(boolean newState, boolean force) {
       addLog(tmpLog);
     }
     bitWrite(switchStatus, heatID, newState);
-    mySwitch.send(heat[newState], 24);
+    mySwitch.send(heat[ROOM_ID][newState], 24);
     delay(RADIO_GAP);
   }
 }
@@ -1272,10 +1318,11 @@ void switchReset() {
 
 byte rotation;
 void resubmitSwitch() {
-#ifdef DEBUG
-  Serial.println("[IN] resubmitSwitch..");
-#endif
   if (inTime - resubmitTime > RESUBMIT_INTERVAL) {
+#ifdef DEBUG
+    Serial.println("[IN] resubmitSwitch..");
+#endif
+
     rotation++;
     switch (rotation % 2) {
       case 0:
@@ -1288,6 +1335,30 @@ void resubmitSwitch() {
     //switchLight(bitRead(switchStatus, lightID), true);
     resubmitTime = inTime;
   }
+}
+//Manual trigger to send radio signal to switch
+void switchRadio(){
+  if(digitalRead(ML_VFAN_ON)==LOW){
+    mySwitch.send(vfan[ROOM_ID][0], 24);
+  }
+  if(digitalRead(ML_VFAN_OFF)==LOW){
+    mySwitch.send(vfan[ROOM_ID][1], 24);
+  }
+  if(digitalRead(ML_LIGHT_ON)==LOW){
+    mySwitch.send(light[ROOM_ID][0], 24);
+    
+  }
+  if(digitalRead(ML_LIGHT_OFF)==LOW){
+    mySwitch.send(light[ROOM_ID][1], 24);
+  }
+  if(digitalRead(ML_MIST_ON)==LOW){
+    mySwitch.send(mist[ROOM_ID][0], 24);
+  }
+  if(digitalRead(ML_MIST_OFF)==LOW){
+    mySwitch.send(mist[ROOM_ID][1], 24);
+  }
+  delayRadio();
+  return;
 }
 //============================SENSOR & RADIO================================//
 void gatherStat() {
@@ -1314,37 +1385,42 @@ void printTentEnv() {
   sprintf_P(tmpLog, PSTR("EI|%s|%s|%d"),  tempStr, humidStr, workingCO2);  addLog(tmpLog);
 }
 void loadTentEnv() {
-  workingTemp = 0;
-  workingRh = 0;
-  workingCO2 = 0;
+  float _workingTemp = 0;
+  float _workingRh = 0;
+  float _workingCO2 = 0;
   byte count = 0;
   for (byte i = 0; i < RADIO_COUNT; i++) {
     if (inTime - lastRevTime[i] < DATA_TIMEOUT
         && sensorTemp[i] > 0 && sensorRh[i] > 0) {
-      workingTemp += sensorTemp[i];
-      workingRh += sensorRh[i];
+      _workingTemp += sensorTemp[i];
+      _workingRh += sensorRh[i];
       count++;
     }
   }
   if (count > 0) {
-    workingTemp = workingTemp / count;
-    workingRh = workingRh / count;
+    workingTemp = _workingTemp / count;
+    workingRh = _workingRh / count;
+    shtSensorHealth = true;
   } else {
-    workingTemp = workingRh = -1;
-#ifdef TEMP_DOWN
-    workingTemp = envTemp;
-    workingRh = envRh;
-#endif
+    if(inTime - lastRevTime[0] > DATA_TIMEOUT){
+      //workingTemp = workingRh = -1;
+      //#ifdef TEMP_DOWN
+      workingTemp = envTemp;
+      workingRh = envRh;
+      shtSensorHealth = false;
+      //#endif
+    }
   }
 
   if (inTime - lastRevTime[CO2_SENSOR_ID - 1] < DATA_TIMEOUT
-      && sensorCO2 > 0) {
+      ) {//&& sensorCO2 > 0
     workingCO2 = sensorCO2;
   } else {
-    workingCO2 = -1;
+    workingCO2 = -2;
   }
 
 }
+
 void revData() {
 #ifdef DEBUG_RF
   Serial.println("[IN] revData..");

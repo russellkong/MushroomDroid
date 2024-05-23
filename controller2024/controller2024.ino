@@ -56,14 +56,12 @@ void setup() {
   // Initialize the rtc object
   rtc.begin();
   // The following lines can be uncommented to set the date and time
-//          rtc.setDOW(5);     // Set Day-of-Week to SUNDAY
-//          rtc.setTime(12, 30, 30);     // Set the time to 12:00:00 (24hr format)
-//          rtc.setDate(6, 1, 2023);   // Set the date to January 1st, 2014
+//          rtc.setDOW(4);     // Set Day-of-Week to SUNDAY
+//          rtc.setTime(00, 32, 30);     // Set the time to 12:00:00 (24hr format)
+//          rtc.setDate(23, 5, 2024);   // Set the date to January 1st, 2014
 
   //Joystick
-  pinMode(SW_PIN, INPUT_PULLUP);
-  pinMode(X_PIN, INPUT);
-  pinMode(Y_PIN, INPUT);
+  pinMode(KEYBROAD_PIN, INPUT);
   //digitalWrite(SW_PIN, HIGH);
   
   //Init error led
@@ -143,9 +141,6 @@ void setup() {
     changeMode(checkMode());
   }
   Serial.println("Done");
-
-  jsXRestPoint = 512;//analogRead(X_PIN);
-  jsYRestPoint = 512;//analogRead(Y_PIN);
 
   closeLog();
   if (millis() - inTime < 2000)  delay (2000 - millis() + inTime);
@@ -327,11 +322,30 @@ void processSerial() {
 boolean isActive() {
   return inTime - lastUserActionTime < LCD_OFF_DELAY && lastUserActionTime > 0;
 }
+/**
+ * return keybroad status
+ * no selected =1023|SW1=0|2=136|3=312|4=499|5=738
+ */
+byte readKeyPress(){
+  if(analogRead(8)>800){
+    return 0;
+  }else if(analogRead(8)>600){
+    return 5;
+  }else if(analogRead(8)>400){
+    return 4;
+  }else if(analogRead(8)>200){
+    return 3;
+  }else if(analogRead(8)>100){
+    return 2;
+  }
+  return 1;
+}
 void readCtl() {
 #ifdef DEBUG
   Serial.println("[IN] readCtl..");
+  Serial.println(analogRead(8));//FREE=1023|SW1=0|2=136|3=312|4=499|5=738
 #endif
-  if (digitalRead(SW_PIN) == LOW) { //selection
+  if (readKeyPress()==5) { //selection
     if (!isActive()) {
       lcdOn();
     } else if (scn_mode == 0) {
@@ -349,20 +363,20 @@ void readCtl() {
       btnDelay();// hold control until release
     }
   }
-  else if (digitalRead(SW_PIN) == HIGH && isActive()) { //navigation
+  else if (isActive()) { //navigation
     //switch screen on display mode only
     if (scn_mode == 0) {
       unsigned long holdTime = millis();
-      while (jsMove() && millis() - holdTime < MAX_CTL_HOLD_TIME) {
+      while (moveCusour() && millis() - holdTime < MAX_CTL_HOLD_TIME) {
         wdt_reset();
         lcdOn();
-        if ((analogRead(X_PIN) - jsXRestPoint)*JS_ORIENTATION < -JS_TRIGGER) scn--;
-        else if ((analogRead(X_PIN) - jsXRestPoint)*JS_ORIENTATION > JS_TRIGGER)  scn++;
-        if ((analogRead(Y_PIN) - jsYRestPoint) < -JS_TRIGGER)  frame--;
-        else if ((analogRead(Y_PIN) - jsYRestPoint) > JS_TRIGGER) frame++;
+        if (readKeyPress()==1) scn--;
+        else if (readKeyPress()==4)  scn++;
+        if (readKeyPress()==2)  frame--;
+        else if (readKeyPress()==3) frame++;
         if (scn >= SCN_NUM) scn = 0;
         refreshScn();
-        delay(REACT_TIME);
+        btnDelay();
       }
     }
   }
@@ -374,13 +388,13 @@ void ctlSettingScn() {
 #endif
   //=============Cursor movement===============//
   unsigned long holdTime = millis();
-  while (jsMove() && millis() - holdTime < MAX_CTL_HOLD_TIME) {
+  while (moveCusour() && millis() - holdTime < MAX_CTL_HOLD_TIME) {
     wdt_reset();
     lcdOn();
-    if ((analogRead(X_PIN) - jsXRestPoint)*JS_ORIENTATION < -JS_TRIGGER) x--;
-    else if ((analogRead(X_PIN) - jsXRestPoint)*JS_ORIENTATION > JS_TRIGGER)  x++;
-    if ((analogRead(Y_PIN) - jsYRestPoint) < -JS_TRIGGER)  y--;
-    else if ((analogRead(Y_PIN) - jsYRestPoint) > JS_TRIGGER)  y++;
+    if (readKeyPress()==1) x--;
+    else if (readKeyPress()==4)  x++;
+    if (readKeyPress()==2)  y--;
+    else if (readKeyPress()==3)  y++;
     if (x >= LCD_SIZE_X) x = 0;
     if (y >= LCD_SIZE_Y) y = 0;
     lcd.setCursor(x, y);
@@ -388,7 +402,7 @@ void ctlSettingScn() {
   }
   //=========Screen Operation==============//
   if (scn == SCN_ID_SW) { //register control
-    if (digitalRead(SW_PIN) == LOW && x < 10) {
+    if (readKeyPress()==5 && x < 10) {
       if (y == 1) {
         if (x < 2) {
           switchMister(!bitRead(switchStatus, mistID), true);
@@ -406,7 +420,7 @@ void ctlSettingScn() {
       btnDelay();// hold control until release
     }
   } else if (scn == SCN_ID_MODE) { //mode selection
-    if (digitalRead(SW_PIN) == LOW && y == 1) {
+    if (readKeyPress()==5 && y == 1) {
       //int oldMode = tentMode;
       if (!changeMode((tentMode + 1) % TENT_MODE_COUNT)) {
         lcd.setCursor(0, 0); lcd.print(F("FAIL"));
@@ -418,7 +432,7 @@ void ctlSettingScn() {
       btnDelay();// hold control until release
     }
   } else if (scn == SCN_ID_SYS) {
-    if (digitalRead(SW_PIN) == LOW && x > 0 ) {
+    if (readKeyPress()==5 && x > 0 ) {
       if (y == 0) {
         closeLog();
         skipSd = true;
@@ -456,9 +470,9 @@ byte changeValue(byte value) {
   lcd.print(value);
   btnDelay();
   unsigned long holdTime = millis();
-  while (digitalRead(SW_PIN) != LOW && millis() - holdTime < MAX_CTL_HOLD_TIME) {
-    if ((analogRead(Y_PIN) - jsYRestPoint) < -JS_TRIGGER)  value--;
-    else if ((analogRead(Y_PIN) - jsYRestPoint) > JS_TRIGGER)  value++;
+  while (readKeyPress()!=5 && millis() - holdTime < MAX_CTL_HOLD_TIME) {
+    if (readKeyPress()==3)  value--;
+    else if (readKeyPress()==2)  value++;
     lcd.setCursor(0, 1); lcd.print("   ");
     lcd.print(value); lcd.setCursor(0, 1);
     wdt_reset();
@@ -468,9 +482,10 @@ byte changeValue(byte value) {
 }
 void editTentConf() {
 #ifdef DEBUG
-  Serial.println("[IN] editTentConf..");
+  Serial.print("[IN] editTentConf..");
+  Serial.print(frame); Serial.print("|"); Serial.print(x); Serial.print("|"); Serial.println(y);
 #endif
-  if (digitalRead(SW_PIN) == LOW && y == 1) {
+  if (readKeyPress()==5 && y == 1) {
     switch (frame % 5) {
       case 0:
         if (x < 3 ) tempMax = changeValue(tempMax);
@@ -554,8 +569,8 @@ void displayInfo() {
   lcd.print(F("ROOM ")); lcd.print(char(ROOM_ID+65)); lcd.print(F("    "));lcd.print(rtc.getTimeStr());
   lcd.setCursor(0, 1); //lcd.print(F("I:")); 12.51C|99.9%|10000
   lcd.print(workingTemp); lcd.print(F("C|")); lcd.print(workingRh); lcd.setCursor(11, 1); lcd.print(F("%|")); lcd.print(workingCO2); if (workingCO2 < 10000)lcd.print(F(" ")); if (workingCO2 < 1000)lcd.print(F(" "));
-  lcd.setCursor(0, 2); lcd.print(F("Mode:   "));
-  lcd.setCursor(6, 2); switch (tentMode) {
+  lcd.setCursor(0, 2); lcd.print(F("P:"));
+  lcd.setCursor(2, 2); switch (tentMode) {
     case 0:
       lcd.print("X");
       break;
@@ -563,38 +578,38 @@ void displayInfo() {
       lcd.print(tentMode);
       break;
   }
-  lcd.setCursor(8, 2); lcd.print(F("OPER:"));
+  lcd.print(F("|"));lcd.print(envTemp); lcd.print(F("C|")); lcd.print(envRh); lcd.print(F("%   "));
+  lcd.setCursor(0, 3); lcd.print(F("O:"));
   switch (tentProg) {
     case IDLE:
-      lcd.print("IDLE  ");
+      lcd.print("-- ");
       break;
     case VENT:
-      lcd.print("VENT "); lcd.print(tentStep);
+      lcd.print("VT"); lcd.print(tentStep);
       break;
     case  WET:
-      lcd.print("HYDR "); lcd.print(tentStep);
+      lcd.print("WT"); lcd.print(tentStep);
       break;
     case  RH_HIGH:
-      lcd.print("HiRH "); lcd.print(tentStep);
+      lcd.print("HR"); lcd.print(tentStep);
       break;
     case  RH_LOW:
-      lcd.print("LoRH "); lcd.print(tentStep);
+      lcd.print("LR"); lcd.print(tentStep);
       break;
     case TEMP_HIGH:
-      lcd.print("HiTP "); lcd.print(tentStep);
+      lcd.print("HT"); lcd.print(tentStep);
       break;
     case EXCG:
-      lcd.print("EXCG "); lcd.print(tentStep);
+      lcd.print("EG"); lcd.print(tentStep);
       break;
     case ERR:
-      lcd.print("ERR   ");
+      lcd.print("!! ");
   }
-
-  lcd.setCursor(0, 3);
-  lcd.print("M:"); lcd.print(bitRead(switchStatus, mistID));
-  lcd.print("|VF:"); lcd.print(bitRead(switchStatus, vFanID));
-  lcd.print("|L:"); lcd.print(bitRead(switchStatus, lightID));
-  lcd.print("|CF:"); lcd.print(bitRead(switchStatus, cFanID));
+  lcd.print("|MVLC:"); 
+  lcd.print(bitRead(switchStatus, mistID));
+  lcd.print(bitRead(switchStatus, vFanID));
+  lcd.print(bitRead(switchStatus, lightID));
+  lcd.print(bitRead(switchStatus, cFanID));
 }
 void displaySwitch() {
   lcd.setCursor(0, 0);
@@ -1091,7 +1106,7 @@ byte loadConf(byte inMode) {
 #endif
   if (confFile.open(CONF_FILE, O_READ)) {
     //sprintf_P(tmpLog, PSTR("SY|CONF|%s"), CONF_FILE); addLog(tmpLog);
-    String content = defContent[inMode];
+    String content;
     // read from the file until there's nothing else in it:
     char tmp; byte mode;
     while (confFile.available()) {
@@ -1103,19 +1118,7 @@ byte loadConf(byte inMode) {
 #ifdef DEBUG
       Serial.print(F("Content:")); Serial.println(content);
 #endif
-      
-        break;
-      }
-    }
-  } else {
-    sd.errorPrint(F("E] Conf file read, read default"));
-    result = false;
-    bitWrite(error, E_SD, 1);
-  }
-  confFile.close();
-#endif
-
-mode = content.substring(1, 2).toInt();//1-2
+      mode = content.substring(1, 2).toInt();//1-2
       if (inMode == mode) {
         humidMin =  content.substring(2, 4).toInt();
         humidMid =  content.substring(4, 6).toInt();
@@ -1134,6 +1137,16 @@ mode = content.substring(1, 2).toInt();//1-2
         result = true;
         sprintf_P(tmpLog, STR_CONF,  mode, humidMin, humidMid, humidMax, tempMin, tempMid, tempMax,
                   ventInv, ventDur, lightStart, lightEnd, wetHour, wetInv, wetDur, airCon ? 'Y' : 'N'); addLog(tmpLog);
+        break;
+      }
+    }
+  } else {
+    sd.errorPrint(F("E] Conf file read"));
+    result = false;
+    bitWrite(error, E_SD, 1);
+  }
+  confFile.close();
+#endif
   return result ? 0 : 1;
 }
 
@@ -1475,7 +1488,7 @@ void lcdOn() {
 }
 void btnDelay() {
   unsigned long holdTime = millis();
-  while (digitalRead(SW_PIN) == LOW && millis() - holdTime < 60000) {
+  while (readKeyPress()>0 && millis() - holdTime < 60000) {
     wdt_reset();
     delay(100); // hold control until release
   }
@@ -1490,9 +1503,11 @@ byte checkMode() {
   }
   return 0;
 }
-boolean jsMove() {
-  if (analogRead(X_PIN) - jsXRestPoint < -JS_TRIGGER || analogRead(X_PIN) - jsXRestPoint > JS_TRIGGER
-      || analogRead(Y_PIN) - jsYRestPoint < -JS_TRIGGER || analogRead(Y_PIN) - jsYRestPoint > JS_TRIGGER) {
+/**
+ * directional keypress
+ */
+boolean moveCusour() {
+  if (readKeyPress()>0 &&readKeyPress()<5) {
     lcdOn();
     return true;
   }

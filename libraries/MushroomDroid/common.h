@@ -8,7 +8,8 @@
 #define CO2_SENSOR_ID 2
 #define RF_CHANNEL 30
 
-byte addresses[][6] = {"1Node", "2Node", "3Node", "4Node"};
+uint64_t addresses[2][5] = {{0xF0F0F0E0AA, 0xF0F0F0E0BB, 0xF0F0F0E0CC, 0xF0F0F0E0DD,0xF0F0F0E0EE},
+{0xF0F0F0F0AA, 0xF0F0F0F0BB, 0xF0F0F0F0CC, 0xF0F0F0F0DD,0xF0F0F0F0EE}};
 
 
 struct RfDataObj {

@@ -19,12 +19,9 @@ const uint8_t SD_CHIP_SELECT_PIN = 33;
 #define R_REV_PIN 3
 #define RF_CS_PIN 48
 #define RF_CE_PIN 49
-//Joystick
-#define SW_PIN 4
+
 // digital pin connected to switch output
-#define X_PIN 8 // analog pin connected to X output
-#define Y_PIN 9 // analog pin connected to Y output
-#define JS_ORIENTATION 1 //vertical positioning of joystick
+#define KEYBROAD_PIN 8 // analog pin connected to keybroad
 
 //manual flip on switch status
 #define ML_LIGHT_ON 22

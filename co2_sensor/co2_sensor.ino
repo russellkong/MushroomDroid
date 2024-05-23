@@ -1,4 +1,4 @@
-#define HVLCD
+//#define HVLCD
 
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h> // F Malpartida's NewLiquidCrystal library
@@ -9,8 +9,11 @@
 #include <avr/wdt.h> //watchdog
 #include <common.h>
 
-//#define DEBUG
-#define MH_LCD
+#define DEBUG
+//#define MH_LCD
+
+#define ROOM_ID 0 //[0,1]
+#define RADIO_ID 2
 
 //LCD
 #ifdef MH_LCD
@@ -26,12 +29,10 @@
 
 #define BACKLIGHT 3
 #define LCD_SIZE_X 16
-#define LCD_SIZE_Y 2
+#define LCD_SIZE_Y 2p
 
-#define RADIO_ID 2
-
-#define SAMPLE_TIME 5000
-#define SUBMIT_INTERVAL 10000
+#define SAMPLE_TIME 3000
+#define SUBMIT_INTERVAL 5000
 
 //flag for error led
 #define OK B00000000
@@ -67,11 +68,12 @@ void(* resetFunc) (void) = 0;
 
 void setup() {
   Serial.begin(9600);
+  Serial.println(ROOM_ID);
   //watchdog
   wdt_enable(WDTO_8S);
   // put your setup code here, to run once:
   mhz19.begin(CO2_RX_PIN, CO2_TX_PIN);
-  mhz19.setAutoCalibration(false);
+  mhz19.setAutoCalibration(true);
   //mhz19.setRange(5000);
   //mhz19.calibrateZero();
   // Serial.println(true);
@@ -86,28 +88,27 @@ void setup() {
   // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
   //radio.setPALevel(RF24_PA_MIN);
   radio.setChannel(RF_CHANNEL);
-  radio.setPALevel(RF24_PA_HIGH);
+  radio.setPALevel(RF24_PA_MAX);
   radio.setDataRate(RF24_250KBPS);
   //radio.setCRCLength( RF24_CRC_16 ) ;
   //radio.setPayloadSize(sizeof(myData));
   // Open a writing and reading pipe on each radio, with opposite addresses
-  Serial.print("Radio ID: "); Serial.println((const char*)addresses[RADIO_ID]);
-  
-  radio.openWritingPipe(addresses[RADIO_ID]);
-  radio.openReadingPipe(1, addresses[CONTROLLER]);
+  //Serial.print("Radio ID: "); Serial.println((const char*)addresses[ROOM_ID][RADIO_ID]);
+  radio.openWritingPipe(addresses[ROOM_ID][RADIO_ID]);
+  radio.openReadingPipe(1, addresses[ROOM_ID][CONTROLLER]);
   myData.id = RADIO_ID;
   //int j = 1;
   //Serial.print("Listen ID: ");
   //  for (int i = 0; i < RADIO_COUNT; i++) {
   //    if (i != RADIO_ID) {
-  //      Serial.print((const char*)addresses[i]);
+  //      Serial.print((const char*)addresses[ROOM_ID][i]);
   //      Serial.print(";");
-  //      radio.openReadingPipe(j, addresses[i]);
+  //      radio.openReadingPipe(j, addresses[ROOM_ID][i]);
   //      j++;
   //    }
   //  }
   //radio.startListening();
-
+  errorCount = 0;
 }
 
 void loop() {
@@ -184,16 +185,17 @@ void loop() {
     Serial.print(F("Now sending.."));
     myData.id = RADIO_ID;
     myData._micros = micros();
-    myData.type = 2;
+    myData.type = SENSOR_TYPE_CO2;
     myData.value1 = co2ppm;
     myData.value2 = co2ppm;
 
+#ifdef DEBUG
     Serial.print(myData._micros);
     Serial.print(F(" : "));
     Serial.print(myData.id); Serial.print(F(" | "));
     Serial.print(myData.type); Serial.print(F(" | "));
     Serial.print(myData.value1);
-
+#endif
     radio.stopListening();
 #ifdef HVLCD
     lcd.setCursor(13, 0); lcd.print("C:");
@@ -207,7 +209,7 @@ void loop() {
     } else {
       Serial.println(F("..Fail"));
 #ifdef HVLCD
-      lcd.print("X");
+      lcd.print("FAIL");
 #endif
       error = error | E_SD;
     }

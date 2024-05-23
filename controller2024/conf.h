@@ -1,6 +1,6 @@
 #ifndef conf_h
 #define conf_h
-#define DEBUG
+//#define DEBUG
 //#define DEBUG_RF
 //#define TEMP_DOWN
 

@@ -1,13 +1,10 @@
 #include <Wire.h>
-#include <LCD.h>
-#include <LiquidCrystal_I2C.h> // F Malpartida's NewLiquidCrystal library
 #include "SHTSensor.h"
 #include <SPI.h>
 #include <RF24.h>
-//#include <avr/wdt.h> //watchdog
 #include <common.h>
 
-#define ROOM_ID 1
+#define ROOM_ID 0 //[0:A;1:B]
 #define RADIO_ID 1
 
 #define DEBUG
@@ -17,8 +14,8 @@
 #define I2C_ADDR 0x3F
 #endif
 
-#define RF_CE_PIN 10 //RF24 data
-#define RF_CS_PIN 9 //RF24 chip select
+#define RF_CE_PIN D8 //RF24 data
+#define RF_CS_PIN D9 //RF24 chip select
 
 #define BACKLIGHT 3
 #define LCD_SIZE_X 20
@@ -41,7 +38,7 @@
 //} myData;
 
 //Display variables
-LiquidCrystal_I2C lcd(I2C_ADDR, BACKLIGHT, POSITIVE);
+//LiquidCrystal_I2C lcd(I2C_ADDR, BACKLIGHT, POSITIVE);
 SHTSensor sht;//(SHTSensor::SHT3X)
 //SHTSensor sht;
 RF24 radio(RF_CE_PIN, RF_CS_PIN);
@@ -69,17 +66,17 @@ void setup() {
 #endif
   // put your setup code here, to run once:
   //watchdog
-  wdt_enable(WDTO_8S);
+//  wdt_enable(WDTO_8S);
 
   sht.init();
   //sht.setAccuracy(SHTSensor::SHT_ACCURACY_MEDIUM);
-  lcd.begin (LCD_SIZE_X, LCD_SIZE_Y); // initialize the lcd
-  lcd.backlight();
-  lcd.setCursor(0, 0);
-  lcd.print(F("Sensor"));
+//  lcd.begin (LCD_SIZE_X, LCD_SIZE_Y); // initialize the lcd
+//  lcd.backlight();
+//  lcd.setCursor(0, 0);
+//  lcd.print(F("Sensor"));
 
-  lcd.setCursor(0, 1);
-  lcd.print("ID: "); lcd.print(RADIO_ID);
+//  lcd.setCursor(0, 1);
+//  lcd.print("ID: "); lcd.print(RADIO_ID);
 
   radio.begin();
   // Set the PA Level low to prevent power supply related issues since this is a
@@ -88,6 +85,9 @@ void setup() {
   radio.setChannel(RF_CHANNEL);
   //radio.setCRCLength( RF24_CRC_16 ) ;
   radio.setDataRate(RF24_250KBPS);
+  if (!radio.isChipConnected()) {
+  Serial.println("ERROR: NRF24 Chip not connected");
+} 
   //radio.setPayloadSize(sizeof(myData));
   // Open a writing and reading pipe on each radio, with opposite addresses
  // Serial.print("Radio ID: "); Serial.println((const char*)addresses[ROOM_ID][RADIO_ID]);
@@ -114,7 +114,7 @@ void setup() {
 }
 
 void loop() {
-  wdt_reset();//I am still alive!!
+//  wdt_reset();//I am still alive!!
 
   //millis overflow detection
   unsigned long inTime = millis();
@@ -132,23 +132,23 @@ void loop() {
 #ifdef DEBUG
     Serial.print(F("Simpling..."));
 #endif
-    lcd.setCursor(10, 0);
-    lcd.print("STAT:");
+//    lcd.setCursor(10, 0);
+//    lcd.print("STAT:");
     if (sht.readSample()) {
-      lcd.print("OK ");
+//      lcd.print("OK ");
       sensorTemp = sht.getTemperature();
       sensorRh = sht.getHumidity();
     } else {
       Serial.println(F("E]SHT"));
-      lcd.print("ERR");
+//      lcd.print("ERR");
       error = error | E_SENSOR;
     }
 
 #ifdef LCD
-    lcd.setCursor(0, 2);
-    lcd.print("TEMP: "); lcd.print(sensorTemp);
-    lcd.setCursor(0, 3);
-    lcd.print("RH: "); lcd.print(sensorRh);
+//    lcd.setCursor(0, 2);
+//    lcd.print("TEMP: "); lcd.print(sensorTemp);
+//    lcd.setCursor(0, 3);
+//    lcd.print("RH: "); lcd.print(sensorRh);
 #endif
   }
 
@@ -176,18 +176,18 @@ void loop() {
     Serial.print(myData.value2);
 #endif
     radio.stopListening();
-    lcd.setCursor(10, 1); lcd.print("CONN:");
+//    lcd.setCursor(10, 1); lcd.print("CONN:");
     if (radio.write( &myData, sizeof(myData))) {
 #ifdef DEBUG
       Serial.println(F("..Done"));
 #endif
-      lcd.print("OK  ");
+//      lcd.print("OK  ");
       submitTime = inTime;
     } else {
 #ifdef DEBUG
       Serial.println(F("..Fail"));
 #endif
-      lcd.print("FAIL");
+//      lcd.print("FAIL");
       error = error | E_SD;
     }
     radio.startListening();

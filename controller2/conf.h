@@ -1,13 +1,13 @@
 #ifndef conf_h
 #define conf_h
-#define DEBUG
+//#define DEBUG
 //#define DEBUG_RF
 //#define TEMP_DOWN
 
 //Equipment List
 //#define CFAN
 //#define HEATER
-#define MH_LCD
+//#define MH_LCD
 #define SHT_SENSOR
 #define RECEIVER
 #define USE_SD
